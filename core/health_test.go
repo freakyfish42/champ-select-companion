@@ -49,6 +49,7 @@ func deps(t *testing.T, lcu *httptest.Server, site, clash, gh *httptest.Server, 
 		WebView2:  func() (string, error) { return "131.0.2903.70", nil },
 		Autostart: func() bool { return true },
 		Now:       func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) },
+		ShowPanel: true,
 	}
 }
 
@@ -64,7 +65,7 @@ func TestHealthAllGood(t *testing.T) {
 	defer srv.Close()
 	cs := Health(deps(t, srv, site, clash, gh, "v1.0.0", true))
 	sum := Summary(cs)
-	for _, want := range []string{"✓  League client: Connected (port 51234, now: champ select)", "✓  Build site: Reachable · data updated 3 h ago", "✓  Clash helper: Reachable · 2 saved matches", "✓  Panel: WebView2 131.0.2903.70 installed", "✓  Updates: You have the latest version (v1.0.0)", "✓  Start with Windows: On"} {
+	for _, want := range []string{"✓  League client: Connected (port 51234, now: champ select)", "✓  Build site: Reachable · data updated 3 h ago", "✓  Clash helper: Reachable · 2 saved matches", "✓  Panel: WebView2 131.0.2903.70 installed", "✓  Settings: Panel on, test mode off", "✓  Updates: You have the latest version (v1.0.0)", "✓  Start with Windows: On"} {
 		if !strings.Contains(sum, want) {
 			t.Errorf("missing %q in\n%s", want, sum)
 		}
@@ -117,5 +118,57 @@ func TestHealthProblems(t *testing.T) {
 	d.LatestAPI, d.HasKey = gh3.URL, false
 	if s := Summary(Health(d)); !strings.Contains(s, "no update key") {
 		t.Fatal(s)
+	}
+}
+
+func TestHealthSettingsAndPanel(t *testing.T) {
+	var ops []string
+	site, clash, gh := healthServers(t, "v1.0.0", &ops)
+	defer site.Close()
+	defer clash.Close()
+	defer gh.Close()
+	d := deps(t, nil, site, clash, gh, "v1.0.0", true)
+	d.ShowPanel = false
+	if s := Summary(Health(d)); !strings.Contains(s, "!  Settings: The panel is turned off: tick") {
+		t.Fatal(s)
+	}
+	d.ShowPanel, d.TestMode = true, true
+	if s := Summary(Health(d)); !strings.Contains(s, "!  Settings: Test mode is on, so Apply changes nothing") {
+		t.Fatal(s)
+	}
+	d.TestMode, d.PanelError = false, "could not create the window"
+	cs := Health(d)
+	if s := Summary(cs); !strings.Contains(s, "✗  Panel: Didn't start: could not create the window") || Worst(cs) != CheckFail {
+		t.Fatal(s)
+	}
+	// a fixed order, whichever check finishes first
+	var names []string
+	for _, c := range cs {
+		names = append(names, c.Name)
+	}
+	if strings.Join(names, ",") != "League client,Build site,Clash helper,Panel,Settings,Updates,Start with Windows" {
+		t.Fatal(names)
+	}
+}
+
+// the checks run at the same time: three slow services cost one wait, not three
+func TestHealthRunsInParallel(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(400 * time.Millisecond)
+		if r.URL.Path == "/api/tierlist" {
+			_, _ = w.Write([]byte(`{"roles":{}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"matches":[],"tag_name":"v1.0.0"}`))
+	}))
+	defer slow.Close()
+	d := deps(t, nil, slow, slow, slow, "v1.0.0", true)
+	start := time.Now()
+	cs := Health(d)
+	if el := time.Since(start); el > 1000*time.Millisecond {
+		t.Fatalf("took %v: the checks ran one after another", el)
+	}
+	if Worst(cs) == CheckFail {
+		t.Fatal(Summary(cs))
 	}
 }

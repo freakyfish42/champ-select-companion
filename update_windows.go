@@ -268,6 +268,9 @@ func (a *App) checkSetup() {
 		return
 	}
 	defer checking.Unlock()
+	a.mu.Lock()
+	cfg, panelErr := a.cfg, a.panelErr
+	a.mu.Unlock()
 	cs := core.Health(core.HealthDeps{
 		FindLeague: findLeague,
 		NewClient:  core.NewClient,
@@ -279,6 +282,9 @@ func (a *App) checkSetup() {
 		HasKey:     updateKey != "",
 		WebView2:   webviewloader.GetInstalledVersion,
 		Autostart:  autostartEnabled,
+		ShowPanel:  cfg.ShowPanel,
+		TestMode:   cfg.TestMode,
+		PanelError: panelErr,
 	})
 	log.Printf("setup check:\n%s", core.Summary(cs))
 	head := map[core.CheckState]string{core.CheckOK: "Everything looks fine.", core.CheckWarn: "Working, with a note or two.", core.CheckFail: "Something needs fixing."}[core.Worst(cs)]

@@ -95,6 +95,7 @@ type App struct {
 	dragged  bool // moved by the player for this champ select
 	lastSent string
 	status   string
+	panelErr string // why the panel window didn't start, for Check setup
 	onStatus func(string)
 	w        webview.WebView
 	hwnd     uintptr
@@ -751,6 +752,9 @@ func (a *App) uiLoop() {
 	})
 	if w == nil {
 		log.Printf("could not create the panel")
+		a.mu.Lock()
+		a.panelErr = "Windows couldn't create the panel window"
+		a.mu.Unlock()
 		a.setStatus("Panel failed to start")
 		select {}
 	}

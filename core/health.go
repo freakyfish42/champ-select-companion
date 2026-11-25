@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,86 +40,114 @@ type HealthDeps struct {
 	WebView2   func() (string, error) // the installed WebView2 version
 	Autostart  func() bool
 	Now        func() time.Time
+	ShowPanel  bool   // the tray's "Show panel in champ select"
+	TestMode   bool   // the tray's "Test mode"
+	PanelError string // set when the panel window failed to start in this run
 }
 
-// Health runs the checks. They only read: nothing is changed in the client, the site or the Clash helper.
+// Health runs the checks at the same time (the slowest one sets the wait, about 10 s at most) and
+// lists them in a fixed order. They only read: nothing is changed in the client, the site or the Clash helper.
 func Health(d HealthDeps) []Check {
 	now := time.Now
 	if d.Now != nil {
 		now = d.Now
 	}
-	var out []Check
-	add := func(name string, s CheckState, detail string, args ...any) {
-		out = append(out, Check{name, s, fmt.Sprintf(detail, args...)})
+	mk := func(name string, s CheckState, detail string, args ...any) Check {
+		return Check{name, s, fmt.Sprintf(detail, args...)}
 	}
-
-	// 1. the League client
-	if creds, err := d.FindLeague(); err != nil {
-		if strings.Contains(err.Error(), "isn't running") {
-			add("League client", CheckWarn, "Not running. Start League and check again.")
-		} else {
-			add("League client", CheckWarn, "Not connected: %s. Restart League and check again.", err)
-		}
-	} else if ph, err := d.NewClient(creds).Phase(); err != nil {
-		add("League client", CheckFail, "Found, but can't connect: %s", err)
-	} else {
-		add("League client", CheckOK, "Connected (port %d, now: %s)", creds.Port, phaseName(ph))
-	}
-
-	// 2. the build site
-	if t, err := FetchTierList(d.Web, d.SiteURL); err != nil {
-		add("Build site", CheckFail, "Can't reach it: %s", err)
-	} else {
-		at := t.OpggAt
-		if at == 0 {
-			at = t.Updated
-		}
-		if at > 0 {
+	jobs := []func() Check{
+		func() Check { // 1. the League client
+			creds, err := d.FindLeague()
+			switch {
+			case err != nil && strings.Contains(err.Error(), "isn't running"):
+				return mk("League client", CheckWarn, "Not running. Start League and check again.")
+			case err != nil:
+				return mk("League client", CheckWarn, "Not connected: %s. Restart League and check again.", err)
+			}
+			ph, err := d.NewClient(creds).Phase()
+			if err != nil {
+				return mk("League client", CheckFail, "Found, but can't connect: %s", err)
+			}
+			return mk("League client", CheckOK, "Connected (port %d, now: %s)", creds.Port, phaseName(ph))
+		},
+		func() Check { // 2. the build site
+			t, err := FetchTierList(d.Web, d.SiteURL)
+			if err != nil {
+				return mk("Build site", CheckFail, "Can't reach it: %s", err)
+			}
+			at := t.OpggAt
+			if at == 0 {
+				at = t.Updated
+			}
+			if at <= 0 {
+				return mk("Build site", CheckOK, "Reachable")
+			}
 			h := now().Sub(time.UnixMilli(at)).Hours()
 			st := CheckOK
 			if h > 48 {
 				st = CheckWarn
 			}
-			add("Build site", st, "Reachable · data updated %s", ago(h))
-		} else {
-			add("Build site", CheckOK, "Reachable")
-		}
+			return mk("Build site", st, "Reachable · data updated %s", ago(h))
+		},
+		func() Check { // 3. the Clash helper (only used in Clash)
+			ms, err := ClashMatches(d.Web, d.ClashURL)
+			if err != nil {
+				return mk("Clash helper", CheckWarn, "Can't read saved matches: %s (only needed in Clash)", err)
+			}
+			return mk("Clash helper", CheckOK, "Reachable · %d saved match%s", len(ms), plural(len(ms), "es"))
+		},
+		func() Check { // 4. the panel needs WebView2, and must have started
+			v, err := d.WebView2()
+			switch {
+			case err != nil || v == "":
+				return mk("Panel", CheckFail, "Microsoft Edge WebView2 is missing, so the panel can't open. Install it from Microsoft and restart.")
+			case d.PanelError != "":
+				return mk("Panel", CheckFail, "Didn't start: %s. Quit and start the app again.", d.PanelError)
+			}
+			return mk("Panel", CheckOK, "WebView2 %s installed", v)
+		},
+		func() Check { // 5. the app's own settings: the usual reasons for "nothing shows" or "Apply does nothing"
+			switch {
+			case !d.ShowPanel && d.TestMode:
+				return mk("Settings", CheckWarn, "The panel is turned off and test mode is on: fix both in the tray menu")
+			case !d.ShowPanel:
+				return mk("Settings", CheckWarn, "The panel is turned off: tick “Show panel in champ select” in the tray menu")
+			case d.TestMode:
+				return mk("Settings", CheckWarn, "Test mode is on, so Apply changes nothing: untick it in the tray menu")
+			}
+			return mk("Settings", CheckOK, "Panel on, test mode off")
+		},
+		func() Check { // 6. updates
+			tag, err := latestTag(d.Web, d.LatestAPI)
+			switch {
+			case d.Version == "dev":
+				return mk("Updates", CheckWarn, "Development build: doesn't update itself")
+			case err != nil:
+				return mk("Updates", CheckWarn, "Couldn't check: %s", err)
+			case Newer(d.Version, tag):
+				return mk("Updates", CheckWarn, "%s is out (you have %s): use Check for updates", tag, d.Version)
+			case !d.HasKey:
+				return mk("Updates", CheckWarn, "You have the latest (%s), but this build has no update key, so it won't update itself", d.Version)
+			}
+			return mk("Updates", CheckOK, "You have the latest version (%s)", d.Version)
+		},
+		func() Check { // 7. start with Windows
+			if d.Autostart() {
+				return mk("Start with Windows", CheckOK, "On")
+			}
+			return mk("Start with Windows", CheckWarn, "Off: turn it on in the tray menu, or the app won't be there next time")
+		},
 	}
-
-	// 3. the Clash helper (only used in Clash)
-	if ms, err := ClashMatches(d.Web, d.ClashURL); err != nil {
-		add("Clash helper", CheckWarn, "Can't read saved matches: %s (only needed in Clash)", err)
-	} else {
-		add("Clash helper", CheckOK, "Reachable · %d saved match%s", len(ms), plural(len(ms), "es"))
+	out := make([]Check, len(jobs))
+	var wg sync.WaitGroup
+	for i, job := range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = job()
+		}()
 	}
-
-	// 4. the panel needs WebView2
-	if v, err := d.WebView2(); err != nil || v == "" {
-		add("Panel", CheckFail, "Microsoft Edge WebView2 is missing, so the panel can't open. Install it from Microsoft and restart.")
-	} else {
-		add("Panel", CheckOK, "WebView2 %s installed", v)
-	}
-
-	// 5. updates
-	switch tag, err := latestTag(d.Web, d.LatestAPI); {
-	case d.Version == "dev":
-		add("Updates", CheckWarn, "Development build: doesn't update itself")
-	case err != nil:
-		add("Updates", CheckWarn, "Couldn't check: %s", err)
-	case Newer(d.Version, tag):
-		add("Updates", CheckWarn, "%s is out (you have %s): use Check for updates", tag, d.Version)
-	case !d.HasKey:
-		add("Updates", CheckWarn, "You have the latest (%s), but this build has no update key, so it won't update itself", d.Version)
-	default:
-		add("Updates", CheckOK, "You have the latest version (%s)", d.Version)
-	}
-
-	// 6. start with Windows
-	if d.Autostart() {
-		add("Start with Windows", CheckOK, "On")
-	} else {
-		add("Start with Windows", CheckWarn, "Off: turn it on in the tray menu, or the app won't be there next time")
-	}
+	wg.Wait()
 	return out
 }
 

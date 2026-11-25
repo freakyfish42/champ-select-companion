@@ -69,7 +69,14 @@ func trayReady(a *App) {
 		case <-site.ClickedCh:
 			openURL(core.SiteURL + "/")
 		case <-check.ClickedCh:
-			go a.checkSetup()
+			// greyed out with a "Checking" title while it runs, so a second click can't go unnoticed
+			check.SetTitle("Checking setup…")
+			check.Disable()
+			go func() {
+				a.checkSetup()
+				check.SetTitle("Check setup")
+				check.Enable()
+			}()
 		case <-logs.ClickedCh:
 			openURL(a.dir)
 		case <-update.ClickedCh:
