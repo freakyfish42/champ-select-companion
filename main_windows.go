@@ -96,11 +96,13 @@ type App struct {
 	inSelect   bool
 	phase      string
 	mode       string
-	inGame     bool       // a game is loading or running
-	level      int        // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	cardHidden bool       // hidden with the hotkey, for this game
-	moving     bool       // the player is moving the card (it takes clicks while moving)
-	cardH      int32      // the card's height as the page measured it (CSS px)
+	inGame     bool          // a game is loading or running
+	level      int           // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	cardHidden bool          // hidden with the hotkey, for this game
+	moving     bool          // the player is moving the card (it takes clicks while moving)
+	cardH      int32         // the card's height as the page measured it (CSS px)
+	gate       core.CardGate // does this game get the card? Only one entered straight from your own champ select
+	cardArmed  bool
 	timer      core.Timer // champ select's clock, read at timerAt
 	timerAt    time.Time
 	queue      string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
@@ -254,8 +256,7 @@ func (a *App) setStatus(s string) {
 
 // ---- watching the League client ----
 
-// inGamePhase: the loading screen and the game itself.
-func inGamePhase(p string) bool { return p == "GameStart" || p == "InProgress" || p == "Reconnect" }
+func inGamePhase(p string) bool { return core.InGamePhase(p) }
 
 func (a *App) watch() {
 	var lcu *core.Client
@@ -290,6 +291,9 @@ func (a *App) watch() {
 			continue
 		}
 		fails = 0
+		a.mu.Lock()
+		a.cardArmed = a.gate.Update(phase)
+		a.mu.Unlock()
 		if inGamePhase(phase) {
 			a.leaveSelect(phase)
 			if a.enterGame() {
@@ -366,7 +370,7 @@ func (a *App) enterSelect(g core.Game) {
 
 // cardReady: is there a build card to show in game? Only for the champion you had in champ select, on the Rift.
 func (a *App) cardReady() bool {
-	return a.build != nil && a.state == "build" && core.SupportedMode(a.mode) && !a.cfg.HideCard
+	return a.cardArmed && a.build != nil && a.state == "build" && core.SupportedMode(a.mode) && !a.cfg.HideCard
 }
 
 // enterGame switches the window to the in-game card; it returns whether there is a card (then the level is read).
@@ -1008,7 +1012,8 @@ func (a *App) follow(h uintptr) {
 		a.mu.Unlock()
 		if card {
 			g, fg := gameWindow(), foreground()
-			if g != 0 && !isIconic(g) && isVisible(g) && (fg == g || fg == h) {
+			// while moving, show it even if the tray took the focus (else "Move" would seem to do nothing)
+			if g != 0 && !isIconic(g) && isVisible(g) && (fg == g || fg == h || moving) {
 				if !styled || styledMoving != moving || styledSee != see {
 					setCardStyle(h, true, !moving, see)
 					styled, styledMoving, styledSee = true, moving, see

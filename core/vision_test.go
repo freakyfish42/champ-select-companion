@@ -436,6 +436,9 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 			t.Errorf("the in-game card must not show %s", bad)
 		}
 	}
+	if !strings.Contains(s, "return a.cardArmed && a.build != nil") || !strings.Contains(s, "a.cardArmed = a.gate.Update(phase)") {
+		t.Error("the card must only show in a game entered straight from your own champ select (not TFT, spectating, after a dodge)")
+	}
 	if !strings.Contains(s, "want := a.inGame && a.cardReady()") || strings.Count(s, "cardKeysDown()") != 1 {
 		t.Error("the card's keys must only be looked at while a game with a card runs")
 	}

@@ -318,20 +318,10 @@ func perPixelAlpha(h uintptr, on bool) {
 	pDwmBlurBehind.Call(h, uintptr(unsafe.Pointer(&bb)))
 }
 
-// cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default
-// top left, a little down from the top.
-// cssH is the card's height as the page measured it (CSS px), so nothing is ever cut off.
-// size is the tray's card size in percent (the page is zoomed the same way, and measures itself zoomed).
+// cardRect: see core.CardRect (tested there).
 func cardRect(game rect, scale float64, dx, dy, cssH int32, size int) rect {
-	if cssH < 40 {
-		cssH = int32(96 * size / 100)
-	}
-	w, h := int32(300*float64(size)/100*scale), int32(float64(cssH)*scale)
-	if dx == 0 && dy == 0 {
-		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
-	}
-	l, t := game.Left+dx, game.Top+dy
-	return rect{Left: l, Top: t, Right: l + w, Bottom: t + h}
+	r := core.CardRect(core.Rect(game), scale, dx, dy, cssH, size)
+	return rect(r)
 }
 
 // The hotkey that hides and shows the card. Only watched while a game with a card is running.
