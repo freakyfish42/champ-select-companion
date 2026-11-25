@@ -49,8 +49,27 @@ go test ./core        # logic, against a fake League client
 
 Dependencies are vendored as source in `third_party/` (see `go.mod`'s replace lines).
 
-## Release
+## Release (signed)
 
-Create a GitHub release with tag `vX.Y.Z` and attach both `dist/lomsland-companion.exe` and
-`dist/lomsland-companion.exe.sha256`. Running copies pick it up within 6 hours (or via *Check for updates*), check the
-SHA-256, swap the exe and restart.
+Updates are signed with an Ed25519 key that only exists on the owner's PC. The app has the public key built in
+(`updatekey.go`) and installs an update only when `lomsland-companion.exe.sig` verifies for exactly that version tag,
+so neither a taken-over GitHub account nor an old release passed off as new can push code to the team.
+
+1. `./build.sh vX.Y.Z`
+2. Drag `dist/lomsland-companion.exe` onto `lomsland-sign.exe` on the owner's PC. It writes `lomsland-companion.exe.sig`.
+3. Create a GitHub release with tag `vX.Y.Z` and attach both files.
+
+The first time, double-click `lomsland-sign.exe` to create the key (`%APPDATA%\lomsland-sign\signing.key`) and see its
+public part. Back the key file up: without it no further updates can be signed.
+
+## Security notes
+
+- The League client's local API is only trusted when its certificate is signed by Riot's local root
+  (`riotgames.pem` from RiotGames/leaguedirector, built in). Riot's certificates may use SHA-1, so that one signature
+  check is done by hand.
+- Everything from build.lømsland.no is escaped before it's shown. The panel can only call: apply rune page, apply
+  spells, open the site, move and hide the panel.
+- The panel's fonts are built in (SIL Open Font License, see `fonts/`). The app contacts only build.lømsland.no, Riot's
+  Data Dragon (icons) and GitHub (updates).
+- The exe isn't code-signed (that needs a paid certificate), so SmartScreen warns on the first run. Only download it
+  from this repo's releases.

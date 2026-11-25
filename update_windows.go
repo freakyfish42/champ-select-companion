@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -157,17 +155,21 @@ func (a *App) checkUpdate(manual bool) {
 		say("You have the latest version (" + version + ").")
 		return
 	}
-	var exeURL, sumURL string
+	if updateKey == "" {
+		say("Version " + rel.Tag + " is out. This copy has no update key, so download it from github.com/freakyfish42/lomsland-companion/releases.")
+		return
+	}
+	var exeURL, sigURL string
 	for _, as := range rel.Assets {
 		switch as.Name {
 		case exeName:
 			exeURL = as.URL
-		case exeName + ".sha256":
-			sumURL = as.URL
+		case exeName + ".sig":
+			sigURL = as.URL
 		}
 	}
-	if exeURL == "" || sumURL == "" {
-		say("Version " + rel.Tag + " is out, but its download is missing.")
+	if exeURL == "" || sigURL == "" {
+		say("Version " + rel.Tag + " is out, but its download or signature is missing.")
 		return
 	}
 	bin, err := a.download(exeURL, 64<<20)
@@ -175,15 +177,14 @@ func (a *App) checkUpdate(manual bool) {
 		say("Couldn't download " + rel.Tag + ": " + err.Error())
 		return
 	}
-	sum, err := a.download(sumURL, 1<<10)
+	sig, err := a.download(sigURL, 1<<10)
 	if err != nil {
 		say("Couldn't download " + rel.Tag + ": " + err.Error())
 		return
 	}
-	got := sha256.Sum256(bin)
-	want := strings.ToLower(strings.Fields(string(sum) + " x")[0])
-	if hex.EncodeToString(got[:]) != want {
-		say("The download of " + rel.Tag + " didn't match its checksum, so it wasn't installed.")
+	// only install what the owner signed, for exactly this version
+	if err := core.VerifyRelease(updateKey, rel.Tag, bin, sig); err != nil {
+		say("Version " + rel.Tag + " was NOT installed: " + err.Error() + ".")
 		return
 	}
 	if a.busy() {

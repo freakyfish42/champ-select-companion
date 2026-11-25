@@ -3,7 +3,8 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,11 +24,30 @@ import (
 
 var version = "dev" // set at build time: -ldflags "-X main.version=v1.0.0"
 
+// versionMarker puts the version inside the exe where the signing tool can find it ("LMVER:v1.0.0:LMVER").
+var versionMarker = "LMVER:dev:LMVER"
+
 //go:embed panel.html
 var panelHTML string
 
 //go:embed icon.ico
 var iconICO []byte
+
+//go:embed fonts/*.woff2
+var fontFS embed.FS
+
+// The panel's fonts (Cinzel and Inter, SIL Open Font License) are built in, so the panel loads nothing from Google.
+func panelPage() string {
+	css := ""
+	for _, f := range []struct{ file, family, weight string }{{"cinzel-700", "Cinzel", "700"}, {"inter-400", "Inter", "400"}, {"inter-600", "Inter", "600"}} {
+		b, err := fontFS.ReadFile("fonts/" + f.file + ".woff2")
+		if err != nil {
+			continue
+		}
+		css += "@font-face{font-family:" + f.family + ";font-weight:" + f.weight + ";font-display:block;src:url(data:font/woff2;base64," + base64.StdEncoding.EncodeToString(b) + ") format('woff2')}\n"
+	}
+	return strings.Replace(panelHTML, "/*FONTS*/", css, 1)
+}
 
 const panelW, panelH = 300, 700
 
@@ -80,7 +100,7 @@ func main() {
 	_ = os.MkdirAll(dir, 0o755)
 	setupLog(dir)
 	args := strings.Join(os.Args[1:], " ")
-	log.Printf("start %s %s", version, args)
+	log.Printf("start %s (%s) %s", version, versionMarker, args)
 
 	if !strings.Contains(args, "--portable") && !isInstalledCopy(dir) {
 		install(dir)
@@ -465,7 +485,7 @@ func (a *App) uiLoop() {
 	})
 	_ = w.Bind("openBuild", func() { a.openBuild() })
 	_ = w.Bind("retry", func() { go a.retry() })
-	w.SetHtml(panelHTML)
+	w.SetHtml(panelPage())
 	a.mu.Lock()
 	a.w, a.hwnd = w, h
 	a.mu.Unlock()

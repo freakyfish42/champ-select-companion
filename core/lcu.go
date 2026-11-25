@@ -5,7 +5,6 @@ package core
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -43,12 +42,11 @@ type Client struct {
 	http *http.Client
 }
 
-// NewClient connects to the client on this PC. The client uses a certificate signed by Riot's own
-// local root, so normal certificate checks can't pass; the connection never leaves 127.0.0.1.
+// NewClient connects to the client on this PC (127.0.0.1 only), accepting only a certificate signed by Riot's local root.
 func NewClient(c Creds) *Client {
 	tr := &http.Transport{
 		Proxy:           nil, // never send local traffic through a proxy
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: RiotTLS(),
 		MaxIdleConns:    4,
 	}
 	return NewClientURL(fmt.Sprintf("https://127.0.0.1:%d", c.Port), c.Password, &http.Client{Transport: tr, Timeout: 5 * time.Second})

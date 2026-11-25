@@ -1,7 +1,13 @@
 package core
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -354,5 +360,88 @@ func TestRealSiteAnswer(t *testing.T) {
 	ids, _ := PerkIDs(b.Runes[0])
 	if want := []int{8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001}; jsonNum(ids) != jsonNum(want) {
 		t.Fatal(ids)
+	}
+}
+
+func TestSignedUpdates(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	pubB64 := base64.StdEncoding.EncodeToString(pub)
+	exe := []byte("MZ....junk " + VersionMarker("dev") + " more " + VersionMarker("v1.2.3") + " end")
+	if TagInBinary(exe) != "v1.2.3" {
+		t.Fatal(TagInBinary(exe))
+	}
+	tag, sig, err := SignRelease(priv, exe)
+	if err != nil || tag != "v1.2.3" {
+		t.Fatal(tag, err)
+	}
+	if err := VerifyRelease(pubB64, "v1.2.3", exe, sig); err != nil {
+		t.Fatal(err)
+	}
+	bad := append([]byte{}, exe...)
+	bad[3] = 'X'
+	if VerifyRelease(pubB64, "v1.2.3", bad, sig) == nil {
+		t.Fatal("changed exe accepted")
+	}
+	if VerifyRelease(pubB64, "v1.2.4", exe, sig) == nil {
+		t.Fatal("an old release passed off as a new tag")
+	}
+	pub2, _, _ := ed25519.GenerateKey(nil)
+	if VerifyRelease(base64.StdEncoding.EncodeToString(pub2), "v1.2.3", exe, sig) == nil {
+		t.Fatal("other key accepted")
+	}
+	if VerifyRelease("", "v1.2.3", exe, sig) == nil || VerifyRelease(pubB64, "v1.2.3", exe, []byte("nope")) == nil {
+		t.Fatal("missing key or junk signature accepted")
+	}
+	if _, _, err := SignRelease(priv, []byte("no marker "+VersionMarker("dev"))); err == nil {
+		t.Fatal("signed a file with no version")
+	}
+}
+
+func TestRiotCertificate(t *testing.T) {
+	c, err := riotRootCert()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(c.Raw)
+	if hex.EncodeToString(sum[:]) != "ca8c9d325b4cdc464c6c94a585c85e91ec23d40ba5bf3ae2822b951a4a504ea3" || c.Subject.CommonName != "LoL Game Engineering Certificate Authority" {
+		t.Fatalf("%x %s", sum, c.Subject)
+	}
+	// a server with any other certificate is refused
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`"ChampSelect"`)) }))
+	defer srv.Close()
+	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: RiotTLS()}}
+	if _, err := NewClientURL(srv.URL, "pw", hc).Phase(); err == nil || !strings.Contains(err.Error(), "certificate isn't Riot's") {
+		t.Fatal(err)
+	}
+}
+
+func TestSignedBy(t *testing.T) {
+	load := func(n string) *x509.Certificate {
+		b, err := os.ReadFile("testdata/" + n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, _ := pem.Decode(b)
+		c, err := x509.ParseCertificate(p.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	ca := load("ca.pem")
+	for _, n := range []string{"leaf_sha1.pem", "leaf_sha256.pem"} {
+		if err := signedBy([]*x509.Certificate{load(n)}, ca); err != nil {
+			t.Errorf("%s: %v", n, err)
+		}
+		if err := signedBy([]*x509.Certificate{load(n), ca}, ca); err != nil {
+			t.Errorf("%s with chain: %v", n, err)
+		}
+	}
+	if signedBy([]*x509.Certificate{load("other.pem")}, ca) == nil {
+		t.Error("a certificate from another root was accepted")
+	}
+	riot, _ := riotRootCert()
+	if signedBy([]*x509.Certificate{load("leaf_sha1.pem")}, riot) == nil {
+		t.Error("a test certificate passed as Riot's")
 	}
 }
