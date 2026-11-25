@@ -9,6 +9,7 @@ Change a vision test only when the owner has asked for that behaviour to change.
 | 1 | Nothing changes in the League client unless the player clicks Apply; watching champ select and Clash scouting only read. | `TestVisionReadsNeverWrite` |
 | 2 | The only things ever written to the client are your rune page and your summoner spells. | `TestVisionOnlyRunesAndSpellsAreWritten` |
 | 3 | The name "lømsland" (or the app's name) never appears in the client: rune pages are named like "Ahri Mid". | `TestVisionNoAppNameInTheClient` |
+| 3b | The panel beside the client doesn't show the name either. | `TestVisionNoAppNameInThePanel` |
 | 4 | Your own rune pages are never changed unless you pick one to replace; with every slot full it asks first. | `TestVisionYourRunePagesAreSafe` |
 | 5 | Clash mode (scouting) only when the client says the game is Clash; the panel only on Summoner's Rift. | `TestVisionClashOnlyInClash` |
 | 6 | The numbers are EUW Emerald+ from build.lømsland.no, and the panel says so. | `TestVisionEUWFromTheSite` |

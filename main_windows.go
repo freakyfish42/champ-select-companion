@@ -700,7 +700,7 @@ func (a *App) uiLoop() {
 	}
 	w := webview.NewWithOptions(webview.WebViewOptions{
 		DataPath:      filepath.Join(a.dir, "webview"),
-		WindowOptions: webview.WindowOptions{Title: "lømsland", Width: panelW, Height: panelH},
+		WindowOptions: webview.WindowOptions{Title: "Champ select", Width: panelW, Height: panelH},
 	})
 	if w == nil {
 		log.Printf("could not create the panel")

@@ -166,6 +166,22 @@ func TestVisionNoAppNameInTheClient(t *testing.T) {
 	}
 }
 
+// Vision 3b: the panel beside the client doesn't show the name either (it sits right next to the client).
+func TestVisionNoAppNameInThePanel(t *testing.T) {
+	b, err := os.ReadFile("../panel.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible := regexp.MustCompile(`(?s)/\*.*?\*/|<!--.*?-->`).ReplaceAllString(string(b), "")
+	if m := regexp.MustCompile(`(?i)l[øo]msland`).FindString(visible); m != "" {
+		t.Fatalf("panel.html shows %q", m)
+	}
+	src, _ := os.ReadFile("../main_windows.go")
+	if regexp.MustCompile(`(?i)Title:\s*"[^"]*l[øo]msland`).Match(src) {
+		t.Fatal("the panel window's title has the app's name")
+	}
+}
+
 // Vision 4: your own rune pages are never changed unless you pick one to replace.
 func TestVisionYourRunePagesAreSafe(t *testing.T) {
 	rc, c, done := newRecorder(t)

@@ -62,7 +62,7 @@ button.ap:disabled{opacity:.6;cursor:default}
 </style>
 </head>
 <body>
-<div class="top" id="top"><img id="cimg" alt="" hidden><div class="t"><b id="cname">lømsland</b><small id="csub">Waiting for champ select</small></div><button class="x" id="close" title="Hide for this champ select">×</button></div>
+<div class="top" id="top"><img id="cimg" alt="" hidden><div class="t"><b id="cname">Champ select</b><small id="csub">Waiting for champ select</small></div><button class="x" id="close" title="Hide for this champ select">×</button></div>
 <div class="test" id="test" hidden>Test mode: Apply only shows what it would change</div>
 <main id="main"><div class="empty">Waiting for champ select…</div></main>
 <div class="foot"><span id="ver">EUW · Emerald+</span><a id="full">Full build ↗</a></div>
@@ -91,7 +91,7 @@ function head(v){
   const b=v.build;if(b&&b.version)ver=b.version;
   const id=(b&&b.id)||v.alias;
   $('cimg').hidden=!(id&&ver);if(id&&ver)$('cimg').src=`${DD}${ver}/img/champion/${id}.png`;
-  $('cname').textContent=v.name||'lømsland';
+  $('cname').textContent=v.name||'Champ select';
   let sub='';
   if(v.state==='unsupported')sub='Champ select';
   else if(v.name)sub=[RN[v.role]||'',v.locked?'Locked in':'Hovering'].filter(Boolean).join(' · ');
