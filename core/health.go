@@ -40,9 +40,11 @@ type HealthDeps struct {
 	WebView2   func() (string, error) // the installed WebView2 version
 	Autostart  func() bool
 	Now        func() time.Time
-	ShowPanel  bool   // the tray's "Show panel in champ select"
-	TestMode   bool   // the tray's "Test mode"
-	PanelError string // set when the panel window failed to start in this run
+	ShowPanel  bool               // the tray's "Show panel in champ select"
+	TestMode   bool               // the tray's "Test mode"
+	PanelError string             // set when the panel window failed to start in this run
+	CardOff    bool               // the tray's "Show build card in game" is off
+	WindowMode func() (int, bool) // League's [General] WindowMode from Config/game.cfg; ok false = unknown
 }
 
 // Health runs the checks at the same time (the slowest one sets the wait, about 10 s at most) and
@@ -117,7 +119,25 @@ func Health(d HealthDeps) []Check {
 			}
 			return mk("Settings", CheckOK, "Panel on, test mode off")
 		},
-		func() Check { // 6. updates
+		func() Check { // 6. the in-game build card needs League in Borderless or Windowed
+			if d.CardOff {
+				return mk("In-game card", CheckOK, "Turned off in the tray menu")
+			}
+			m, ok := 0, false
+			if d.WindowMode != nil {
+				m, ok = d.WindowMode()
+			}
+			switch {
+			case !ok:
+				return mk("In-game card", CheckOK, "On (shows when League runs Borderless or Windowed; couldn't read League's setting)")
+			case m == WindowFullscreen:
+				return mk("In-game card", CheckWarn, "League is set to Fullscreen, so the card can't show in game: choose Borderless in League's Video settings")
+			case m == WindowWindowed:
+				return mk("In-game card", CheckOK, "On · League runs Windowed")
+			}
+			return mk("In-game card", CheckOK, "On · League runs Borderless")
+		},
+		func() Check { // 7. updates
 			tag, err := latestTag(d.Web, d.LatestAPI)
 			switch {
 			case d.Version == "dev":
@@ -131,7 +151,7 @@ func Health(d HealthDeps) []Check {
 			}
 			return mk("Updates", CheckOK, "You have the latest version (%s)", d.Version)
 		},
-		func() Check { // 7. start with Windows
+		func() Check { // 8. start with Windows
 			if d.Autostart() {
 				return mk("Start with Windows", CheckOK, "On")
 			}

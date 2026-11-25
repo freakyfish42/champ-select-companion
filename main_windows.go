@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +60,9 @@ type Config struct {
 	ShowPanel bool  `json:"showPanel"`
 	TestMode  bool  `json:"testMode"`
 	OwnPages  []int `json:"ownPages,omitempty"` // rune pages this app wrote (one per League account), known by id
+	HideCard  bool  `json:"hideCard,omitempty"` // the tray's "Show build card in game" is off
+	CardDX    int32 `json:"cardDX,omitempty"`   // where the player moved the card: offset from the game's top-left
+	CardDY    int32 `json:"cardDY,omitempty"`
 }
 
 type App struct {
@@ -66,44 +70,48 @@ type App struct {
 	prefs *core.Prefs
 	web   *http.Client
 
-	mu       sync.Mutex
-	cfg      Config
-	lcu      *core.Client
-	champs   map[int]core.Champion
-	inSelect bool
-	phase    string
-	mode     string
-	timer    core.Timer // champ select's clock, read at timerAt
-	timerAt  time.Time
-	queue    string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
-	clash    bool
-	enemies  []core.EnemyPick     // champions the other team has shown
-	posOf    map[string]string    // Clash: the opponents' registered positions, by puuid
-	gen      int                  // counts champ selects, so late answers from an earlier one are dropped
-	needCnt  string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
-	cntNext  map[string]time.Time // when a counter-pick fetch may be tried (again)
-	tier     *core.TierList
-	tierAt   time.Time
-	cl       clashState
-	pick     core.Pick
-	champ    core.Champion
-	key      string
-	build    *core.Build
-	state    string // waiting, pick, loading, build, unsupported, error
-	msg      string
-	seq      int
-	cache    map[string]cached
-	applied  map[string]core.Pref
-	hidden   bool // closed by the player for this champ select
-	dragged  bool // moved by the player for this champ select
-	lastSent string
-	status   string
-	panelErr string // why the panel window didn't start, for Check setup
-	onStatus func(string)
-	w        webview.WebView
-	hwnd     uintptr
-	uiWanted chan struct{}
-	uiOnce   sync.Once
+	mu         sync.Mutex
+	cfg        Config
+	lcu        *core.Client
+	champs     map[int]core.Champion
+	inSelect   bool
+	phase      string
+	mode       string
+	inGame     bool       // a game is loading or running
+	level      int        // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	cardHidden bool       // hidden with the hotkey, for this game
+	moving     bool       // the player is moving the card (it takes clicks while moving)
+	timer      core.Timer // champ select's clock, read at timerAt
+	timerAt    time.Time
+	queue      string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
+	clash      bool
+	enemies    []core.EnemyPick     // champions the other team has shown
+	posOf      map[string]string    // Clash: the opponents' registered positions, by puuid
+	gen        int                  // counts champ selects, so late answers from an earlier one are dropped
+	needCnt    string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
+	cntNext    map[string]time.Time // when a counter-pick fetch may be tried (again)
+	tier       *core.TierList
+	tierAt     time.Time
+	cl         clashState
+	pick       core.Pick
+	champ      core.Champion
+	key        string
+	build      *core.Build
+	state      string // waiting, pick, loading, build, unsupported, error
+	msg        string
+	seq        int
+	cache      map[string]cached
+	applied    map[string]core.Pref
+	hidden     bool // closed by the player for this champ select
+	dragged    bool // moved by the player for this champ select
+	lastSent   string
+	status     string
+	panelErr   string // why the panel window didn't start, for Check setup
+	onStatus   func(string)
+	w          webview.WebView
+	hwnd       uintptr
+	uiWanted   chan struct{}
+	uiOnce     sync.Once
 }
 
 // clashState: scouting from the League client (this round's opponent) and from the Clash helper's saved matches.
@@ -178,6 +186,7 @@ func main() {
 	go runTray(a)
 	go a.watch()
 	go a.updateLoop()
+	go a.hotkeyLoop()
 	a.uiLoop() // the panel's window lives on this (the main) thread
 }
 
@@ -225,8 +234,12 @@ func (a *App) setStatus(s string) {
 
 // ---- watching the League client ----
 
+// inGamePhase: the loading screen and the game itself.
+func inGamePhase(p string) bool { return p == "GameStart" || p == "InProgress" || p == "Reconnect" }
+
 func (a *App) watch() {
 	var lcu *core.Client
+	live := core.NewLive()
 	fails := 0
 	for {
 		if lcu == nil {
@@ -257,6 +270,19 @@ func (a *App) watch() {
 			continue
 		}
 		fails = 0
+		if inGamePhase(phase) {
+			a.leaveSelect(phase)
+			if a.enterGame() {
+				if n, err := live.Level(); err == nil {
+					a.setLevel(n)
+				}
+				time.Sleep(time.Second)
+			} else {
+				time.Sleep(2 * time.Second)
+			}
+			continue
+		}
+		a.leaveGame()
 		if phase != "ChampSelect" {
 			a.leaveSelect(phase)
 			time.Sleep(2 * time.Second)
@@ -296,6 +322,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.mu.Lock()
 	a.gen++
 	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
+	a.inGame, a.moving, a.level = false, false, 0
 	a.cl = clashState{}
 	a.timer, a.timerAt = core.Timer{}, time.Time{}
 	a.hidden, a.dragged = false, false
@@ -315,6 +342,125 @@ func (a *App) enterSelect(g core.Game) {
 		a.uiOnce.Do(func() { a.uiWanted <- struct{}{} })
 	}
 	a.push()
+}
+
+// cardReady: is there a build card to show in game? Only for the champion you had in champ select, on the Rift.
+func (a *App) cardReady() bool {
+	return a.build != nil && a.state == "build" && core.SupportedMode(a.mode) && !a.cfg.HideCard
+}
+
+// enterGame switches the window to the in-game card; it returns whether there is a card (then the level is read).
+func (a *App) enterGame() bool {
+	a.mu.Lock()
+	first := !a.inGame
+	if first {
+		a.inGame, a.level, a.cardHidden, a.moving = true, 0, false, false
+	}
+	ok := a.cardReady()
+	name := a.champ.Name
+	a.mu.Unlock()
+	if first {
+		log.Printf("game started (card: %v, %s)", ok, name)
+		if ok { // the window may not exist yet if the panel was turned off in champ select
+			a.uiOnce.Do(func() { a.uiWanted <- struct{}{} })
+		}
+		go a.forcePush()
+	}
+	return ok
+}
+
+func (a *App) leaveGame() {
+	a.mu.Lock()
+	was := a.inGame
+	a.inGame, a.moving, a.level = false, false, 0
+	a.mu.Unlock()
+	if was {
+		log.Printf("game ended")
+		go a.forcePush()
+	}
+}
+
+func (a *App) setLevel(n int) {
+	a.mu.Lock()
+	changed := n != a.level
+	a.level = n
+	a.mu.Unlock()
+	if changed {
+		go a.push()
+	}
+}
+
+// toggleCard: the hotkey.
+func (a *App) toggleCard() {
+	a.mu.Lock()
+	a.cardHidden = !a.cardHidden
+	a.mu.Unlock()
+}
+
+// hotkeyLoop owns the hotkey: claimed only while a game with a card runs.
+func (a *App) hotkeyLoop() {
+	runtime.LockOSThread() // RegisterHotKey's messages go to the thread that registered it
+	reg, warned := false, false
+	for {
+		a.mu.Lock()
+		want := a.inGame && a.cardReady()
+		a.mu.Unlock()
+		switch {
+		case want && !reg:
+			if reg = registerHotkey(); !reg && !warned {
+				log.Printf("couldn't claim %s for the card (another program has it)", cardHotkey)
+				warned = true
+			}
+		case !want && reg:
+			unregisterHotkey()
+			reg, warned = false, false
+		}
+		if hotkeyPressed() && reg {
+			a.toggleCard()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// setMoving: the tray's "Move the in-game card", and the card's Done button.
+func (a *App) setMoving(on bool) {
+	a.mu.Lock()
+	in := a.inGame && a.cardReady()
+	if on && !in {
+		a.mu.Unlock()
+		messageBox("The build card can be moved while a game is running and the card shows. Start a game (the Practice Tool works), then choose “Move the in-game card” again.", mbIconInfo)
+		return
+	}
+	a.moving = on
+	if on {
+		a.cardHidden = false
+	}
+	h := a.hwnd
+	a.mu.Unlock()
+	if !on && h != 0 {
+		if g := gameWindow(); g != 0 {
+			cr, ok1 := windowRect(h)
+			gr, ok2 := windowRect(g)
+			if ok1 && ok2 {
+				a.mu.Lock()
+				a.cfg.CardDX, a.cfg.CardDY = cr.Left-gr.Left, cr.Top-gr.Top
+				if a.cfg.CardDX == 0 && a.cfg.CardDY == 0 {
+					a.cfg.CardDX = 1 // 0,0 means "default place"
+				}
+				a.mu.Unlock()
+				a.saveConfig()
+			}
+		}
+	}
+	go a.forcePush()
+}
+
+func (a *App) setShowCard(on bool) {
+	a.mu.Lock()
+	a.cfg.HideCard = !on
+	a.mu.Unlock()
+	a.saveConfig()
+	go a.forcePush()
 }
 
 func (a *App) leaveSelect(phase string) {
@@ -542,6 +688,9 @@ type view struct {
 	Counter []core.VsEntry  `json:"counters,omitempty"` // pick ideas against the lane opponent, while not locked in
 	CntFor  string          `json:"countersFor,omitempty"`
 	Clash   *clashView      `json:"clash,omitempty"`
+	Level   int             `json:"level,omitempty"`  // in game: your level
+	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
+	Hotkey  string          `json:"hotkey,omitempty"`
 }
 
 func (a *App) roleOf() string {
@@ -554,6 +703,14 @@ func (a *App) roleOf() string {
 func (a *App) prefKey() string { return core.PrefKey(a.champ.Alias, a.roleOf()) }
 
 func (a *App) view() view {
+	if a.inGame {
+		// the in-game card: the build you had in champ select and your own level. Nothing about other players.
+		if !a.cardReady() {
+			return view{State: "ingame-none", Version: version}
+		}
+		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
+			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey}
+	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
 		v.Name, v.Alias = "", ""
@@ -777,6 +934,7 @@ func (a *App) uiLoop() {
 	_ = w.Bind("retry", func() { go a.retry() })
 	_ = w.Bind("clashRefresh", func() { go a.refreshClash() })
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
+	_ = w.Bind("cardDone", func() { go a.setMoving(false) })
 	w.SetHtml(panelPage())
 	a.mu.Lock()
 	a.w, a.hwnd = w, h
@@ -791,9 +949,44 @@ func (a *App) uiLoop() {
 
 // follow keeps the panel beside the client while champ select is on and the client (or the panel) is in front.
 func (a *App) follow(h uintptr) {
-	var last, seen rect
-	shown := false
+	var last, seen, lastCard rect
+	shown, styled, styledMoving := false, false, false
 	for {
+		// ---- in game: the build card over the game ----
+		a.mu.Lock()
+		card := a.inGame && a.cardReady() && !a.cardHidden
+		moving := a.moving
+		dx, dy := a.cfg.CardDX, a.cfg.CardDY
+		a.mu.Unlock()
+		if card {
+			g, fg := gameWindow(), foreground()
+			if g != 0 && !isIconic(g) && isVisible(g) && (fg == g || fg == h) {
+				if !styled || styledMoving != moving {
+					setCardStyle(h, true, !moving)
+					styled, styledMoving = true, moving
+				}
+				if gr, ok := windowRect(g); ok {
+					r := cardRect(gr, dpiScale(g), dx, dy)
+					if !moving && (r != lastCard || !shown) {
+						placeTopmost(h, r, true)
+						lastCard = r
+					} else if !shown {
+						placeTopmost(h, r, true)
+					}
+					shown = true
+				}
+			} else if shown {
+				hideWindow(h)
+				shown = false
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if styled { // back from the card: the normal panel again
+			hideWindow(h)
+			setCardStyle(h, false, false)
+			styled, shown, lastCard, last = false, false, rect{}, rect{}
+		}
 		if pr, ok := windowRect(h); ok && shown && pr != seen {
 			if seen != (rect{}) {
 				go a.forcePush()
@@ -801,7 +994,7 @@ func (a *App) follow(h uintptr) {
 			seen = pr
 		}
 		a.mu.Lock()
-		want := a.inSelect && a.cfg.ShowPanel && !a.hidden && core.SupportedMode(a.mode) // no panel in ARAM, Arena, ...
+		want := a.inSelect && !a.inGame && a.cfg.ShowPanel && !a.hidden && core.SupportedMode(a.mode) // no panel in ARAM, Arena, ...
 		dragged := a.dragged
 		a.mu.Unlock()
 		// the player moved the panel: leave it where they put it for the rest of this champ select

@@ -35,6 +35,10 @@ var (
 	pMessageBoxW           = user32.NewProc("MessageBoxW")
 	pSetProcessDpiAwareCtx = user32.NewProc("SetProcessDpiAwarenessContext")
 	pDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
+	pSetLayeredAttrs       = user32.NewProc("SetLayeredWindowAttributes")
+	pRegisterHotKey        = user32.NewProc("RegisterHotKey")
+	pUnregisterHotKey      = user32.NewProc("UnregisterHotKey")
+	pPeekMessageW          = user32.NewProc("PeekMessageW")
 )
 
 type rect struct{ Left, Top, Right, Bottom int32 }
@@ -59,6 +63,15 @@ const (
 	mbIconInfo       = 0x40
 	mbIconWarning    = 0x30
 	mbTopmost        = 0x40000
+	wsExLayered      = 0x00080000
+	wsExTransparent  = 0x00000020 // clicks go through to the game
+	wsExNoActivate   = 0x08000000
+	lwaAlpha         = 2
+	wmHotkey         = 0x0312
+	modControl       = 0x2
+	modShift         = 0x4
+	modNoRepeat      = 0x4000
+	pmRemove         = 1
 )
 
 func setDPIAware() {
@@ -86,6 +99,41 @@ func openURL(u string) {
 }
 
 // findLeague reads the lockfile next to the running LeagueClientUx.exe.
+// leagueDirs: where the League client runs from, then the usual install folder.
+func leagueDirs() []string {
+	dirs := []string{}
+	if snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0); err == nil {
+		var e windows.ProcessEntry32
+		e.Size = uint32(unsafe.Sizeof(e))
+		for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+			if !strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), "LeagueClientUx.exe") {
+				continue
+			}
+			if h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, e.ProcessID); err == nil {
+				buf := make([]uint16, windows.MAX_LONG_PATH)
+				n := uint32(len(buf))
+				if windows.QueryFullProcessImageName(h, 0, &buf[0], &n) == nil {
+					dirs = append(dirs, filepath.Dir(windows.UTF16ToString(buf[:n])))
+				}
+				windows.CloseHandle(h)
+			}
+			break
+		}
+		windows.CloseHandle(snap)
+	}
+	return append(dirs, `C:\Riot Games\League of Legends`)
+}
+
+// gameWindowMode: League's Fullscreen/Windowed/Borderless setting, from Config\game.cfg (read only).
+func gameWindowMode() (int, bool) {
+	for _, d := range leagueDirs() {
+		if b, err := os.ReadFile(filepath.Join(d, "Config", "game.cfg")); err == nil {
+			return core.GameWindowMode(string(b))
+		}
+	}
+	return 0, false
+}
+
 func findLeague() (core.Creds, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -141,6 +189,13 @@ func clientWindow() uintptr {
 	cls, _ := windows.UTF16PtrFromString("RCLIENT")
 	ttl, _ := windows.UTF16PtrFromString("League of Legends")
 	h, _, _ := pFindWindowW.Call(uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(ttl)))
+	return h
+}
+
+// gameWindow is the running game (not the client), or 0.
+func gameWindow() uintptr {
+	cls, _ := windows.UTF16PtrFromString("RiotWindowClass")
+	h, _, _ := pFindWindowW.Call(uintptr(unsafe.Pointer(cls)), 0)
 	return h
 }
 
@@ -215,6 +270,68 @@ func placeTopmost(h uintptr, r rect, move bool) {
 }
 
 func hideWindow(h uintptr) { pShowWindow.Call(h, swHide) }
+
+// setCardStyle switches the window between the champ select panel and the in-game card. The card never
+// takes focus, is slightly see-through and, unless it's being moved, lets every click through to the game.
+func setCardStyle(h uintptr, card, clickThrough bool) {
+	ex := uintptr(wsExToolWindow)
+	if card {
+		ex |= wsExLayered | wsExNoActivate
+		if clickThrough {
+			ex |= wsExTransparent
+		}
+	}
+	pSetWindowLongPtrW.Call(h, gwlExStyle, ex)
+	if card {
+		pSetLayeredAttrs.Call(h, 0, 232, lwaAlpha)
+	}
+	pSetWindowPos.Call(h, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpFrameChanged)
+}
+
+// cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default
+// top left, a little down from the top.
+func cardRect(game rect, scale float64, dx, dy int32) rect {
+	w, h := int32(300*scale), int32(236*scale)
+	if dx == 0 && dy == 0 {
+		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
+	}
+	l, t := game.Left+dx, game.Top+dy
+	return rect{Left: l, Top: t, Right: l + w, Bottom: t + h}
+}
+
+// The hotkey that hides and shows the card. It's only claimed while a game with a card is running, so it
+// doesn't take Ctrl+Shift+B away from other programs the rest of the time.
+const cardHotkey = "Ctrl+Shift+B"
+
+func registerHotkey() bool {
+	r, _, _ := pRegisterHotKey.Call(0, 1, modControl|modShift|modNoRepeat, 'B')
+	return r != 0
+}
+
+func unregisterHotkey() { pUnregisterHotKey.Call(0, 1) }
+
+// hotkeyPressed takes this thread's pending messages; true if the hotkey was among them.
+func hotkeyPressed() bool {
+	var msg struct {
+		Hwnd    uintptr
+		Message uint32
+		WParam  uintptr
+		LParam  uintptr
+		Time    uint32
+		Pt      struct{ X, Y int32 }
+		Private uint32
+	}
+	hit := false
+	for {
+		r, _, _ := pPeekMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, pmRemove)
+		if r == 0 {
+			return hit
+		}
+		if msg.Message == wmHotkey {
+			hit = true
+		}
+	}
+}
 
 // startDrag lets the player move the frameless panel by its header.
 func startDrag(h uintptr) {

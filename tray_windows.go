@@ -32,6 +32,8 @@ func trayReady(a *App) {
 	systray.AddSeparator()
 	showAgain := systray.AddMenuItem("Show the panel again", "Bring back the panel if you closed it in this champ select")
 	showPanel := systray.AddMenuItemCheckbox("Show panel in champ select", "", cfg.ShowPanel)
+	showCard := systray.AddMenuItemCheckbox("Show build card in game", "Your build and skill order over the game (League in Borderless or Windowed). "+cardHotkey+" hides it", !cfg.HideCard)
+	moveCard := systray.AddMenuItem("Move the in-game card", "While a game runs: drag the card where you want it, then click Done")
 	testMode := systray.AddMenuItemCheckbox("Test mode (Apply only describes)", "Apply buttons say what they would change, and change nothing", cfg.TestMode)
 	autostart := systray.AddMenuItemCheckbox("Start with Windows", "", autostartEnabled())
 	systray.AddSeparator()
@@ -57,6 +59,10 @@ func trayReady(a *App) {
 			a.showAgain()
 		case <-showPanel.ClickedCh:
 			a.setShowPanel(toggle(showPanel))
+		case <-showCard.ClickedCh:
+			a.setShowCard(toggle(showCard))
+		case <-moveCard.ClickedCh:
+			go a.setMoving(true)
 		case <-testMode.ClickedCh:
 			a.setTestMode(toggle(testMode))
 		case <-autostart.ClickedCh:

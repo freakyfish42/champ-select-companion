@@ -412,3 +412,43 @@ func TestVisionNoBlankRunePage(t *testing.T) {
 		t.Error("2 s before the game starts must count as too late")
 	}
 }
+
+// Vision 12: the in-game card stays within Riot's rules. It shows only the plan from champ select and your own
+// level: it asks the game for nothing else, shows nothing about other players, never sends input to the game,
+// and only claims its hotkey while a game with a card runs.
+func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
+	live, _ := os.ReadFile("livegame.go")
+	if n := strings.Count(string(live), "/liveclientdata/"); n != 1 || !strings.Contains(string(live), `"/liveclientdata/activeplayer"`) {
+		t.Errorf("the app may only ask the game for your own player (found %d live-data paths)", n)
+	}
+	if strings.Contains(string(live), "http.MethodPost") || strings.Contains(string(live), `"POST"`) {
+		t.Error("the in-game reader must only read")
+	}
+	app, _ := os.ReadFile("../main_windows.go")
+	s := string(app)
+	i := strings.Index(s, "func (a *App) view() view {\n\tif a.inGame {")
+	j := strings.Index(s, "\tv := view{")
+	if i < 0 || j < i {
+		t.Fatal("view() must start with the in-game card")
+	}
+	for _, bad := range []string{"Matchup", "Clash", "enemies", "Counter", "posOf", "cl."} {
+		if strings.Contains(s[i:j], bad) {
+			t.Errorf("the in-game card must not show %s", bad)
+		}
+	}
+	if !strings.Contains(s, "want := a.inGame && a.cardReady()") {
+		t.Error("the hotkey must only be claimed while a game with a card runs")
+	}
+	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go"} {
+		b, _ := os.ReadFile(f)
+		for _, input := range []string{"SendInput", "keybd_event", "mouse_event", "SetCursorPos"} {
+			if strings.Contains(string(b), input) {
+				t.Errorf("%s sends input (%s): the app never plays for you", f, input)
+			}
+		}
+	}
+	w, _ := os.ReadFile("../win_windows.go")
+	if !strings.Contains(string(w), "ex |= wsExTransparent") || !strings.Contains(string(w), "wsExLayered | wsExNoActivate") {
+		t.Error("the card must not take focus, and must let clicks through to the game")
+	}
+}

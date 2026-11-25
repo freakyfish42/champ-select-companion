@@ -285,6 +285,8 @@ func (a *App) checkSetup() {
 		ShowPanel:  cfg.ShowPanel,
 		TestMode:   cfg.TestMode,
 		PanelError: panelErr,
+		CardOff:    cfg.HideCard,
+		WindowMode: gameWindowMode,
 	})
 	log.Printf("setup check:\n%s", core.Summary(cs))
 	head := map[core.CheckState]string{core.CheckOK: "Everything looks fine.", core.CheckWarn: "Working, with a note or two.", core.CheckFail: "Something needs fixing."}[core.Worst(cs)]

@@ -46,10 +46,11 @@ func deps(t *testing.T, lcu *httptest.Server, site, clash, gh *httptest.Server, 
 		NewClient: func(Creds) *Client { return NewClientURL(lcu.URL, "pw", lcu.Client()) },
 		Web:       site.Client(), SiteURL: site.URL, ClashURL: clash.URL, LatestAPI: gh.URL,
 		Version: version, HasKey: key,
-		WebView2:  func() (string, error) { return "131.0.2903.70", nil },
-		Autostart: func() bool { return true },
-		Now:       func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) },
-		ShowPanel: true,
+		WebView2:   func() (string, error) { return "131.0.2903.70", nil },
+		Autostart:  func() bool { return true },
+		Now:        func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) },
+		ShowPanel:  true,
+		WindowMode: func() (int, bool) { return WindowBorderless, true },
 	}
 }
 
@@ -65,7 +66,7 @@ func TestHealthAllGood(t *testing.T) {
 	defer srv.Close()
 	cs := Health(deps(t, srv, site, clash, gh, "v1.0.0", true))
 	sum := Summary(cs)
-	for _, want := range []string{"✓  League client: Connected (port 51234, now: champ select)", "✓  Build site: Reachable · data updated 3 h ago", "✓  Clash helper: Reachable · 2 saved matches", "✓  Panel: WebView2 131.0.2903.70 installed", "✓  Settings: Panel on, test mode off", "✓  Updates: You have the latest version (v1.0.0)", "✓  Start with Windows: On"} {
+	for _, want := range []string{"✓  League client: Connected (port 51234, now: champ select)", "✓  Build site: Reachable · data updated 3 h ago", "✓  Clash helper: Reachable · 2 saved matches", "✓  Panel: WebView2 131.0.2903.70 installed", "✓  Settings: Panel on, test mode off", "✓  In-game card: On · League runs Borderless", "✓  Updates: You have the latest version (v1.0.0)", "✓  Start with Windows: On"} {
 		if !strings.Contains(sum, want) {
 			t.Errorf("missing %q in\n%s", want, sum)
 		}
@@ -146,7 +147,7 @@ func TestHealthSettingsAndPanel(t *testing.T) {
 	for _, c := range cs {
 		names = append(names, c.Name)
 	}
-	if strings.Join(names, ",") != "League client,Build site,Clash helper,Panel,Settings,Updates,Start with Windows" {
+	if strings.Join(names, ",") != "League client,Build site,Clash helper,Panel,Settings,In-game card,Updates,Start with Windows" {
 		t.Fatal(names)
 	}
 }
@@ -170,5 +171,22 @@ func TestHealthRunsInParallel(t *testing.T) {
 	}
 	if Worst(cs) == CheckFail {
 		t.Fatal(Summary(cs))
+	}
+}
+
+func TestHealthCardWindowMode(t *testing.T) {
+	var ops []string
+	site, clash, gh := healthServers(t, "v1.0.0", &ops)
+	defer site.Close()
+	defer clash.Close()
+	defer gh.Close()
+	d := deps(t, nil, site, clash, gh, "v1.0.0", true)
+	d.WindowMode = func() (int, bool) { return WindowFullscreen, true }
+	if s := Summary(Health(d)); !strings.Contains(s, "!  In-game card: League is set to Fullscreen") {
+		t.Fatal(s)
+	}
+	d.CardOff = true
+	if s := Summary(Health(d)); !strings.Contains(s, "✓  In-game card: Turned off") {
+		t.Fatal(s)
 	}
 }
