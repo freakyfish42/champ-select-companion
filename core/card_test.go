@@ -37,10 +37,10 @@ func TestCardGate(t *testing.T) {
 func TestCardRect(t *testing.T) {
 	game := Rect{0, 0, 1920, 1080}
 	r := CardRect(game, 1, 0, 0, 88, 100)
-	if r != (Rect{16, 118, 316, 206}) {
+	if r != (Rect{16, 118, 316, 210}) {
 		t.Fatal("default spot", r)
 	}
-	if r := CardRect(game, 1.5, 0, 0, 110, 125); r.Right-r.Left != 562 || r.Bottom-r.Top != 165 {
+	if r := CardRect(game, 1.5, 0, 0, 110, 125); r.Right-r.Left != 562 || r.Bottom-r.Top != 171 {
 		t.Fatal("size and DPI", r)
 	}
 	// dragged far off the edge, or the game got smaller: pulled back inside
@@ -54,7 +54,7 @@ func TestCardRect(t *testing.T) {
 	if r := CardRect(game, 1, 1200, 40, 88, 100); r.Left != 1200 || r.Top != 40 {
 		t.Fatal("saved spot", r)
 	}
-	if r := CardRect(game, 1, 0, 0, 0, 0); r.Bottom-r.Top != 96 {
+	if r := CardRect(game, 1, 0, 0, 0, 0); r.Bottom-r.Top != 100 {
 		t.Fatal("before the page measured itself", r)
 	}
 }

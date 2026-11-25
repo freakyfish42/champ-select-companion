@@ -78,6 +78,8 @@ body.ig main{padding:6px 8px 6px;overflow:hidden;flex:none}
 .its{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
 .its img{width:25px;height:25px;border-radius:4px;flex:none}
 .its i{width:1px;height:18px;background:var(--line);margin:0 4px}
+.igh .mx.nm2{color:var(--ink);font-weight:600;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.its img.hov{outline:2px solid var(--gold)}.sq span.hov{outline:1.5px solid var(--ink)}
 .mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font-size:11px;color:var(--gold)}
 body.ig.moving{outline:2px dashed var(--gold);cursor:move}
 </style>
@@ -162,6 +164,15 @@ function counters(v){
   const c=v.counters||[];if(!c.length||v.locked)return '';
   return `<div class="ci"><h4>Good into ${esc(v.countersFor)}</h4>${c.map(x=>`<div>${x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<span>${esc(x.name)}</span><b class="hi">${pct(x.wr)}</b><small>${num(x.play)} games</small></div>`).join('')}</div>`}
 
+/* hover names: the app tells the page where the pointer is over the card (the card itself lets clicks through) */
+let hv=[-1,-1];
+window.hover=(x,y)=>{
+  hv=[x,y];const mx=$('mx');if(!mx)return;
+  const el=x>=0?document.elementFromPoint(x,y):null,t=el&&el.closest('[data-name]');
+  document.querySelectorAll('.hov').forEach(e=>e.classList.remove('hov'));
+  if(t){t.classList.add('hov');mx.textContent=t.dataset.name;mx.classList.add('nm2')}else{mx.textContent=mx.dataset.def;mx.classList.remove('nm2')}};
+let cardRO=null;
+
 /* how old the numbers are: when op.gg last processed them (or when the site fetched them) */
 function age(b){const t=Number(b&&(b.opggAt||b.updated));if(!t)return '';const m=Math.max(0,Math.round((Date.now()-t)/60000));
   return m<90?`updated ${m} min ago`:m<48*60?`updated ${Math.round(m/60)} h ago`:`updated ${Math.round(m/1440)} days ago`}
@@ -188,12 +199,12 @@ function ago(t){const m=Math.max(0,Math.round((Date.now()-Number(t))/60000));ret
 function ingame(v){
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;if(b&&b.version)ver=b.version;
   const id=(b&&b.id)||v.alias,lv=v.level||0,ord=(b&&b.skills&&b.skills.order)||[];
-  const ic=x=>x&&x.items?x.items.map(i=>ver?img(`${DD}${ver}/img/item/${Number(i.id)}.png`,'',i.name):'').join(''):'';
+  const ic=x=>x&&x.items?x.items.map(i=>ver?img(`${DD}${ver}/img/item/${Number(i.id)}.png`,'',i.name).replace('<img ',`<img data-name="${esc(i.name)}" `):'').join(''):'';
   const groups=[ic(b&&b.starter),ic(b&&b.core),ic(b&&b.boots)].filter(Boolean);
   const now=lv&&ord[lv-1]?`Lv ${lv} · ${esc(ord[lv-1])}`:lv?`Lv ${lv}`:esc(v.name||'');
   const mx=b&&b.max&&b.max.order?b.max.order.map(esc).join(' › '):'';
-  return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span><span class="mx">${mx}</span></div>`
-    +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span class="${esc(String(k).toLowerCase())}${lv&&i<lv-1?' done':''}${lv&&i===lv-1?' now':''}">${esc(k)}</span>`).join('')}</div>`:'')
+  return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span><span class="mx" id="mx" data-def="${esc(mx)}">${mx}</span></div>`
+    +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span data-name="Level ${i+1}: ${esc(k)}" class="${esc(String(k).toLowerCase())}${lv&&i<lv-1?' done':''}${lv&&i===lv-1?' now':''}">${esc(k)}</span>`).join('')}</div>`:'')
     +(groups.length?`<div class="its">${groups.join('<i></i>')}</div>`:'')
     +(v.moving?`<div class="mv"><span>Drag it where you want it</span><button class="ap" id="mvdone">Done</button></div>`:'')}
 
@@ -204,8 +215,12 @@ function render(v){
   document.body.style.setProperty('--ca',v.state==='ingame'?String(Math.min(1,(v.alpha||100)/100)):'1');
   if(v.state==='ingame'){V=v;const m=$('main');m.innerHTML=ingame(v);
     m.style.zoom=String((v.size||125)/100); /* the tray's card size; the window follows the measured height */
-    /* tell the app how tall the card is, so the window fits it exactly (fonts differ a little per PC) */
-    requestAnimationFrame(()=>{const h=Math.ceil(m.getBoundingClientRect().height)+2;window.cardHeight&&cardHeight(h)});
+    /* tell the app how tall the card is, and again whenever that changes (fonts and icons settle a moment
+       later, and differ a little per PC), so the window always fits it */
+    const tell=()=>{const h=Math.ceil(m.getBoundingClientRect().height)+2;window.cardHeight&&cardHeight(h)};
+    requestAnimationFrame(tell);if(document.fonts)document.fonts.ready.then(tell);
+    if(hv[0]>=0)window.hover(hv[0],hv[1]); /* keep showing the name after a redraw (level up) */
+    if(!cardRO&&window.ResizeObserver){cardRO=new ResizeObserver(()=>{if(document.body.classList.contains('ig'))tell()});cardRO.observe(m)}
     const d=$('mvdone');if(d)d.onclick=()=>window.cardDone&&cardDone();
     if(v.moving)m.onmousedown=e=>{if(e.button===0&&!e.target.closest('button'))window.drag&&drag()};else m.onmousedown=null;
     return}

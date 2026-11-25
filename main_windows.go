@@ -979,7 +979,7 @@ func (a *App) uiLoop() {
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	_ = w.Bind("cardDone", func() { go a.setMoving(false) })
 	_ = w.Bind("cardHeight", func(px int) {
-		if px < 40 || px > 600 {
+		if px < 40 || px > 800 {
 			return
 		}
 		a.mu.Lock()
@@ -1002,6 +1002,7 @@ func (a *App) uiLoop() {
 func (a *App) follow(h uintptr) {
 	var last, seen, lastCard rect
 	shown, styled, styledMoving, styledSee := false, false, false, false
+	hoverAt := [2]int32{-1, -1} // the pointer over the card, in page pixels (-1 = not over it)
 	for {
 		// ---- in game: the build card over the game ----
 		a.mu.Lock()
@@ -1034,12 +1035,31 @@ func (a *App) follow(h uintptr) {
 						placeTopmost(h, r, true)
 					}
 					shown = true
+					// hover names: the card lets clicks through, so it never sees the mouse; the app reads where the
+					// pointer is and tells the page, which shows the name of what's under it
+					at := [2]int32{-1, -1}
+					if x, y, ok := cursorPos(); ok && !moving {
+						if cr, ok := windowRect(h); ok && x >= cr.Left && x < cr.Right && y >= cr.Top && y < cr.Bottom {
+							sc := dpiScale(g)
+							at = [2]int32{int32(float64(x-cr.Left) / sc), int32(float64(y-cr.Top) / sc)}
+						}
+					}
+					if at != hoverAt {
+						hoverAt = at
+						a.mu.Lock()
+						w := a.w
+						a.mu.Unlock()
+						if w != nil {
+							js := fmt.Sprintf("window.hover && window.hover(%d,%d)", at[0], at[1])
+							w.Dispatch(func() { w.Eval(js) })
+						}
+					}
 				}
 			} else if shown {
 				hideWindow(h)
 				shown = false
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if styled { // back from the card: the normal panel again

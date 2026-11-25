@@ -43,6 +43,7 @@ var (
 	pDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
 	pSetLayeredAttrs       = user32.NewProc("SetLayeredWindowAttributes")
 	pGetAsyncKeyState      = user32.NewProc("GetAsyncKeyState")
+	pGetCursorPos          = user32.NewProc("GetCursorPos")
 )
 
 type rect struct{ Left, Top, Right, Bottom int32 }
@@ -331,6 +332,13 @@ const (
 	vkShift   = 0x10
 	vkControl = 0x11
 )
+
+// cursorPos: where the mouse pointer is (reading only; the app never moves it).
+func cursorPos() (int32, int32, bool) {
+	var p struct{ X, Y int32 }
+	r, _, _ := pGetCursorPos.Call(uintptr(unsafe.Pointer(&p)))
+	return p.X, p.Y, r != 0
+}
 
 // cardKeysDown: are Ctrl, Shift and B held right now? (Key state only: no keyboard hook.)
 func cardKeysDown() bool {
