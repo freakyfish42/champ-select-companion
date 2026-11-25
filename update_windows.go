@@ -292,15 +292,40 @@ func (a *App) checkSetup() {
 	if core.Worst(cs) == core.CheckFail {
 		icon = mbIconWarning
 	}
-	if !askYesNo(head+"\n\n"+core.Summary(cs)+"\nOpen the full report (with the end of the log) to copy and send it?", icon) {
-		return
+	who := ""
+	if creds, err := findLeague(); err == nil {
+		who = core.NewClient(creds).RiotID()
 	}
+	as := ""
+	if who != "" {
+		as = " as " + who
+	}
+	full := core.Report(cs, version, time.Now(), logTail(filepath.Join(a.dir, "log.txt"), 50))
 	p := filepath.Join(a.dir, "setup-report.txt")
-	if err := os.WriteFile(p, []byte(core.Report(cs, version, time.Now(), logTail(filepath.Join(a.dir, "log.txt"), 50))), 0o644); err != nil {
-		messageBox("Couldn't write the report: "+err.Error(), mbIconWarning)
-		return
+	saved := os.WriteFile(p, []byte(full), 0o644)
+	switch askYesNoCancel(head+"\n\n"+core.Summary(cs)+"\nSend the full report to the team's Discord"+as+"?\nIt has these lines and the end of the app's log: no passwords, no other players.\n\nYes: send it    No: open it, to read or copy    Cancel: close", icon) {
+	case 6: // Yes: the only place a report leaves the PC
+		if err := core.SendReport(a.web, core.SiteURL, who, full); err != nil {
+			log.Printf("report not sent: %v", err)
+			msg := "Couldn't send the report: " + err.Error()
+			if saved == nil {
+				msg += "\n\nIt opens now, so you can copy it and send it another way."
+			}
+			messageBox(msg, mbIconWarning)
+			if saved == nil {
+				openURL(p)
+			}
+			return
+		}
+		log.Printf("report sent")
+		messageBox("Sent to the team's Discord. Thanks!", mbIconInfo)
+	case 7: // No: just open it
+		if saved != nil {
+			messageBox("Couldn't write the report: "+saved.Error(), mbIconWarning)
+			return
+		}
+		openURL(p)
 	}
-	openURL(p)
 }
 
 // logTail returns the last n lines of the log.

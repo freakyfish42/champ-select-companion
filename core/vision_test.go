@@ -359,3 +359,31 @@ func TestVisionSpellsKeepTheirKeys(t *testing.T) {
 		}
 	}
 }
+
+// Vision 11: a setup report leaves the PC only when the player clicks Yes on "Send … to the team's Discord?".
+func TestVisionReportsOnlyOnClick(t *testing.T) {
+	all := ""
+	for _, f := range []string{"../main_windows.go", "../update_windows.go", "../tray_windows.go", "../win_windows.go"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all += string(b)
+	}
+	if n := strings.Count(all, "core.SendReport("); n != 1 {
+		t.Fatalf("SendReport is called %d times; it must be called once, from Check setup", n)
+	}
+	src, _ := os.ReadFile("../update_windows.go")
+	s := string(src)
+	fn, ask, yes, send := strings.Index(s, "func (a *App) checkSetup()"), strings.Index(s, "switch askYesNoCancel("), strings.Index(s, "case 6: // Yes"), strings.Index(s, "core.SendReport(")
+	if fn < 0 || !(fn < ask && ask < yes && yes < send) {
+		t.Fatal("the report must only be sent in Check setup, after the player answers Yes")
+	}
+	tray, _ := os.ReadFile("../tray_windows.go")
+	if strings.Count(string(tray), "a.checkSetup()") != 1 || !strings.Contains(string(tray), "case <-check.ClickedCh:") {
+		t.Fatal("Check setup must only run from its tray item")
+	}
+	if strings.Count(all, "a.checkSetup()") != 1 {
+		t.Fatal("Check setup must not run by itself")
+	}
+}

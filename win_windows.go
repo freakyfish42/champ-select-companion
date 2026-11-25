@@ -81,6 +81,14 @@ func askYesNo(text string, icon uint32) bool {
 	return r == 6                                                                                                        // IDYES
 }
 
+// askYesNoCancel returns 6 (Yes), 7 (No) or 2 (Cancel, or the box was closed).
+func askYesNoCancel(text string, icon uint32) uintptr {
+	t, _ := windows.UTF16PtrFromString(text)
+	c, _ := windows.UTF16PtrFromString("Champ Select Companion")
+	r, _, _ := pMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), uintptr(icon|mbTopmost|0x3)) // MB_YESNOCANCEL
+	return r
+}
+
 func openURL(u string) {
 	_ = windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(u), nil, nil, 1)
 }
