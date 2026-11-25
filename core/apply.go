@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // LegacyPrefix marked the app's rune page in early test builds; such a page still counts as the app's own.
@@ -44,6 +45,7 @@ type Result struct {
 func fail(err error) Result { return Result{Msg: err.Error()} }
 
 type pageBody struct {
+	ID              int    `json:"id,omitempty"`
 	Name            string `json:"name"`
 	PrimaryStyleID  int    `json:"primaryStyleId"`
 	SubStyleID      int    `json:"subStyleId"`
@@ -76,10 +78,19 @@ func describe(p RunePage) string {
 // ApplyRunes writes p into the app's own rune page (one of ownIDs, the pages it wrote before) and makes it current.
 // With no page of its own and no free slot it changes nothing and returns the player's pages to choose from;
 // replaceID is the page the player then chose. dry only describes what would happen.
+//
+// So you never load in with a blank page:
+//   - an existing page is changed in place (one PUT), never deleted and made again, so there is no moment
+//     without it; only a free slot gets a new page
+//   - every rune is checked against the client's own list first (a patch can make the site and client differ)
+//   - afterwards the active page is read back, and Apply only says "set" if the client really has those runes
 func (c *Client) ApplyRunes(p RunePage, name string, ownIDs []int, replaceID int, dry bool) Result {
 	ids, err := PerkIDs(p)
 	if err != nil {
 		return fail(err)
+	}
+	if bad := c.unknownRunes(append([]int{p.Primary.ID, p.Secondary.ID}, ids...)); bad != "" {
+		return Result{Msg: "This page has runes your League client doesn't know (" + bad + "), maybe after a new patch. Nothing was changed: set your runes yourself this time."}
 	}
 	var pages []Page
 	if err := c.Do("GET", "/lol-perks/v1/pages", nil, &pages); err != nil {
@@ -103,17 +114,17 @@ func (c *Client) ApplyRunes(p RunePage, name string, ownIDs []int, replaceID int
 			own = &pages[i]
 		}
 	}
-	remove := 0
+	target := 0 // the page to change in place; 0 = make a new one in a free slot
 	switch {
 	case own != nil:
-		remove = own.ID
+		target = own.ID
 	case replaceID > 0:
 		for _, pg := range editable {
 			if pg.ID == replaceID {
-				remove = pg.ID
+				target = pg.ID
 			}
 		}
-		if remove == 0 {
+		if target == 0 {
 			return Result{Msg: "That rune page is gone. Pick another one."}
 		}
 	case len(editable) >= inv.OwnedPageCount:
@@ -121,28 +132,88 @@ func (c *Client) ApplyRunes(p RunePage, name string, ownIDs []int, replaceID int
 	}
 	if dry {
 		what := "a new page"
-		if remove != 0 {
-			for _, pg := range pages {
-				if pg.ID == remove {
-					what = "“" + pg.Name + "”"
-				}
+		for _, pg := range pages {
+			if target != 0 && pg.ID == target {
+				what = "“" + pg.Name + "”"
 			}
 		}
 		return Result{OK: true, Msg: fmt.Sprintf("Test mode: would write %s (%s + %s: %s) over %s.", name, p.Primary.Name, p.Secondary.Name, describe(p), what)}
 	}
-	if remove != 0 {
-		if err := c.Do("DELETE", fmt.Sprintf("/lol-perks/v1/pages/%d", remove), nil, nil); err != nil {
+	body := pageBody{ID: target, Name: name, PrimaryStyleID: p.Primary.ID, SubStyleID: p.Secondary.ID, SelectedPerkIDs: ids, Current: true}
+	if target != 0 {
+		if err := c.Do("PUT", fmt.Sprintf("/lol-perks/v1/pages/%d", target), body, nil); err != nil {
+			return fail(err) // the page is as it was: nothing was deleted
+		}
+	} else {
+		var made Page
+		if err := c.Do("POST", "/lol-perks/v1/pages", body, &made); err != nil {
 			return fail(err)
 		}
+		target = made.ID
 	}
-	var made Page
-	if err := c.Do("POST", "/lol-perks/v1/pages", pageBody{Name: name, PrimaryStyleID: p.Primary.ID, SubStyleID: p.Secondary.ID, SelectedPerkIDs: ids, Current: true}, &made); err != nil {
-		return fail(err)
+	if !c.runesActive(target, body) {
+		_ = c.Do("PUT", "/lol-perks/v1/currentpage", target, nil)
+		if !c.runesActive(target, body) {
+			return Result{PageID: target, Msg: "The client didn't take the rune page. Check your runes now, before the game starts!"}
+		}
 	}
-	if made.ID != 0 && !made.Current {
-		_ = c.Do("PUT", "/lol-perks/v1/currentpage", made.ID, nil)
+	return Result{OK: true, Msg: "Rune page set: " + p.Keys[0].Name, PageID: target}
+}
+
+// unknownRunes names the ids the client doesn't know, or "" when all are known. If the client's list can't be
+// read, it doesn't block (the check after writing still catches a page the client didn't take).
+func (c *Client) unknownRunes(ids []int) string {
+	var perks, styles []struct {
+		ID int `json:"id"`
 	}
-	return Result{OK: true, Msg: "Rune page set: " + p.Keys[0].Name, PageID: made.ID}
+	if c.Do("GET", "/lol-perks/v1/perks", nil, &perks) != nil || c.Do("GET", "/lol-perks/v1/styles", nil, &styles) != nil || len(perks) == 0 || len(styles) == 0 {
+		return ""
+	}
+	known := map[int]bool{}
+	for _, x := range append(perks, styles...) {
+		known[x.ID] = true
+	}
+	var bad []string
+	for _, id := range ids {
+		if !known[id] {
+			bad = append(bad, fmt.Sprint(id))
+		}
+	}
+	return strings.Join(bad, ", ")
+}
+
+// runesActive reads the active page back: is it page id, with exactly these runes? The client can take a moment.
+func (c *Client) runesActive(id int, want pageBody) bool {
+	for try := 0; try < 3; try++ {
+		if try > 0 {
+			time.Sleep(c.settle)
+		}
+		var cur struct {
+			ID              int   `json:"id"`
+			PrimaryStyleID  int   `json:"primaryStyleId"`
+			SubStyleID      int   `json:"subStyleId"`
+			SelectedPerkIDs []int `json:"selectedPerkIds"`
+		}
+		if c.Do("GET", "/lol-perks/v1/currentpage", nil, &cur) != nil {
+			continue
+		}
+		if cur.ID == id && cur.PrimaryStyleID == want.PrimaryStyleID && cur.SubStyleID == want.SubStyleID && sameInts(cur.SelectedPerkIDs, want.SelectedPerkIDs) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func containsInt(list []int, v int) bool {

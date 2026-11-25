@@ -18,6 +18,7 @@ Change a vision test only when the owner has asked for that behaviour to change.
 | 8 | Updates only install when signed with the owner's key, checked before anything is written. | `TestVisionUpdatesNeedTheOwnersSignature` |
 | 9 | The panel can't be made to run code from the data it shows (security policy, no inline handlers, nothing loaded from outside but Riot's images). | `TestVisionPanelIsLockedDown` |
 | 10 | Apply keeps each summoner spell on the key it's on (Flash on F stays on F). | `TestVisionSpellsKeepTheirKeys` |
+| 11 | Apply never leaves you with a blank rune page: the page is changed in place (never deleted and made again), its runes are checked against the client first and read back afterwards, and Apply is locked in the last 3 seconds before the game starts. | `TestVisionNoBlankRunePage`, `TestApplyRunesNeverBlank`, `TestTooLate` |
 
 Also decided by the owner, covered by the regular tests: the panel suggests two rune pages and two spell pairs and
 the player picks; picks are remembered per champion and role; lane matchup; the app is for the Clash team on Windows.

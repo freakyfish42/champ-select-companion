@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // recorder is a fake League client that answers everything it knows and remembers every request.
@@ -23,6 +24,7 @@ type recorder struct {
 	mu    sync.Mutex
 	calls []string // "METHOD path body"
 	full  bool
+	page  string // the last rune page written, served back as the active page
 }
 
 func (rc *recorder) serve(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +32,16 @@ func (rc *recorder) serve(w http.ResponseWriter, r *http.Request) {
 	rc.mu.Lock()
 	rc.calls = append(rc.calls, r.Method+" "+r.URL.Path+" "+string(b))
 	full := rc.full
+	if (r.Method == "POST" || r.Method == "PUT") && strings.HasPrefix(r.URL.Path, "/lol-perks/v1/pages") {
+		var pg map[string]any
+		_ = json.Unmarshal(b, &pg)
+		if pg["id"] == nil {
+			pg["id"] = 77
+		}
+		j, _ := json.Marshal(pg)
+		rc.page = string(j)
+	}
+	page := rc.page
 	rc.mu.Unlock()
 	out := func(s string) { w.Header().Set("Content-Type", "application/json"); _, _ = w.Write([]byte(s)) }
 	switch {
@@ -62,7 +74,9 @@ func (rc *recorder) serve(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/lol-perks/v1/inventory":
 		out(`{"ownedPageCount":2}`)
 	case r.URL.Path == "/lol-perks/v1/pages" && r.Method == "POST":
-		out(`{"id":77,"current":true}`)
+		out(page)
+	case r.URL.Path == "/lol-perks/v1/currentpage" && r.Method == "GET":
+		out(page)
 	default:
 		w.WriteHeader(204)
 	}
@@ -109,7 +123,7 @@ func TestVisionReadsNeverWrite(t *testing.T) {
 // Vision 2: the app only ever writes your rune page and your summoner spells, nothing else in the client.
 func TestVisionOnlyRunesAndSpellsAreWritten(t *testing.T) {
 	allowed := map[string]bool{
-		"DELETE /lol-perks/v1/pages/":                     true,
+		"PUT /lol-perks/v1/pages/":                        true, // changes a page in place (never deletes it)
 		"POST /lol-perks/v1/pages":                        true,
 		"PUT /lol-perks/v1/currentpage":                   true,
 		"PATCH /lol-champ-select/v1/session/my-selection": true,
@@ -228,9 +242,14 @@ func TestVisionYourRunePagesAreSafe(t *testing.T) {
 		t.Fatal(r)
 	}
 	for _, w := range rc.writes() {
-		if strings.HasPrefix(w, "DELETE") {
-			t.Fatalf("a page that isn't the app's was deleted: %s", w)
+		if strings.HasPrefix(w, "DELETE") || strings.HasPrefix(w, "PUT /lol-perks/v1/pages/1 ") {
+			t.Fatalf("a page that isn't the app's was changed or deleted: %s", w)
 		}
+	}
+	// no blank page: a page is changed in place, and no rune page is ever deleted (no moment without one)
+	src, _ := os.ReadFile("apply.go")
+	if strings.Contains(string(src), `"DELETE"`) {
+		t.Fatal("rune pages must be changed in place, never deleted and made again")
 	}
 }
 
@@ -369,5 +388,27 @@ func TestVisionSpellsKeepTheirKeys(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Vision 11: Apply never leaves you with a blank rune page. The page is changed in place (never deleted), its
+// runes are checked against the client first and read back afterwards, and Apply is locked in the last seconds.
+func TestVisionNoBlankRunePage(t *testing.T) {
+	src, _ := os.ReadFile("apply.go")
+	s := string(src)
+	for _, must := range []string{`c.Do("PUT", fmt.Sprintf("/lol-perks/v1/pages/%d", target)`, "c.unknownRunes(", "if !c.runesActive(target, body) {"} {
+		if !strings.Contains(s, must) {
+			t.Errorf("apply.go no longer contains %q", must)
+		}
+	}
+	if strings.Contains(s, `"DELETE"`) {
+		t.Error("rune pages must never be deleted and made again")
+	}
+	app, _ := os.ReadFile("../main_windows.go")
+	if strings.Count(string(app), "if late {\n\t\treturn core.Result{Msg: tooLate}") != 2 {
+		t.Error("both Apply buttons must refuse in the last seconds before the game starts")
+	}
+	if !(Timer{Phase: "FINALIZATION", LeftInMs: 2000}).TooLate(time.Now(), time.Now()) {
+		t.Error("2 s before the game starts must count as too late")
 	}
 }

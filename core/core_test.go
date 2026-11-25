@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestParseLockfile(t *testing.T) {
@@ -142,6 +144,8 @@ type fakeLCU struct {
 	spells   map[string]int
 	calls    []string
 	password string
+	perks    []int // runes the client knows; nil = the list can't be read
+	blank    bool  // the client stores pages without runes (what a blank page looks like)
 }
 
 func newFake(owned int, pages ...map[string]any) (*fakeLCU, *httptest.Server) {
@@ -196,9 +200,46 @@ func (f *fakeLCU) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.nextID++
 		p["id"], p["isDeletable"], p["isEditable"] = f.nextID, true, true
+		if f.blank {
+			p["selectedPerkIds"] = []int{}
+		}
 		f.pages = append(f.pages, p)
 		f.current = f.nextID
 		out(p)
+	case r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/lol-perks/v1/pages/"):
+		id := strings.TrimPrefix(r.URL.Path, "/lol-perks/v1/pages/")
+		var p map[string]any
+		_ = json.Unmarshal(body, &p)
+		for i, x := range f.pages {
+			if jsonNum(x["id"]) == id && x["isEditable"] == true {
+				p["id"], p["isDeletable"], p["isEditable"] = x["id"], true, true
+				if f.blank {
+					p["selectedPerkIds"] = []int{}
+				}
+				f.pages[i] = p // in place; like the real client, this doesn't make it the active page
+				w.WriteHeader(201)
+				return
+			}
+		}
+		w.WriteHeader(404)
+	case r.Method == "GET" && r.URL.Path == "/lol-perks/v1/currentpage":
+		for _, x := range f.pages {
+			if jsonNum(x["id"]) == fmt.Sprint(f.current) {
+				out(x)
+				return
+			}
+		}
+		w.WriteHeader(404)
+	case r.Method == "GET" && (r.URL.Path == "/lol-perks/v1/perks" || r.URL.Path == "/lol-perks/v1/styles"):
+		if f.perks == nil {
+			w.WriteHeader(404)
+			return
+		}
+		var list []map[string]int
+		for _, id := range f.perks {
+			list = append(list, map[string]int{"id": id})
+		}
+		out(list)
 	case r.Method == "PUT" && r.URL.Path == "/lol-perks/v1/currentpage":
 		_ = json.Unmarshal(body, &f.current)
 		w.WriteHeader(204)
@@ -495,6 +536,88 @@ func TestQueueName(t *testing.T) {
 	for _, c := range cases {
 		if got := QueueName(c.id, c.desc, c.mode, c.clash); got != c.want {
 			t.Errorf("%+v: got %q", c, got)
+		}
+	}
+}
+
+// The blank-page protections: in place, checked first, checked after.
+func TestApplyRunesNeverBlank(t *testing.T) {
+	b := sampleBuild(t)
+	name := PageName("Ahri", "mid")
+	ids, _ := PerkIDs(b.Runes[0])
+	all := append([]int{b.Runes[0].Primary.ID, b.Runes[0].Secondary.ID}, ids...)
+	for _, r := range b.Runes {
+		x, _ := PerkIDs(r)
+		all = append(all, append([]int{r.Primary.ID, r.Secondary.ID}, x...)...)
+	}
+
+	// 1. the app's own page is changed in place: same id, never deleted, and it becomes the active page
+	f, srv := newFake(3, page(10, "Mine", true), page(20, "Ahri Mid", true))
+	f.perks, f.current = all, 10
+	r := client(srv, "pw").ApplyRunes(b.Runes[0], name, []int{20}, 0, false)
+	if !r.OK || r.PageID != 20 || f.current != 20 || len(f.pages) != 2 {
+		t.Fatalf("%+v cur=%d pages=%v", r, f.current, f.pages)
+	}
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "DELETE") || c == "POST /lol-perks/v1/pages" {
+			t.Fatalf("the page must be changed in place: %v", f.calls)
+		}
+	}
+	srv.Close()
+
+	// 2. a rune the client doesn't know (say, after a patch): refused before anything changes
+	f, srv = newFake(3, page(20, "Ahri Mid", true))
+	for _, id := range all { // the client doesn't know the primary tree
+		if id != all[0] {
+			f.perks = append(f.perks, id)
+		}
+	}
+	r = client(srv, "pw").ApplyRunes(b.Runes[0], name, []int{20}, 0, false)
+	if r.OK || !strings.Contains(r.Msg, "doesn't know") || !strings.Contains(r.Msg, fmt.Sprint(all[0])) {
+		t.Fatalf("%+v", r)
+	}
+	for _, c := range f.calls {
+		if !strings.HasPrefix(c, "GET") {
+			t.Fatalf("changed something: %v", f.calls)
+		}
+	}
+	srv.Close()
+
+	// 3. the client keeps a blank page: Apply says so loudly instead of "set"
+	f, srv = newFake(3, page(20, "Ahri Mid", true))
+	f.perks, f.blank = all, true
+	r = client(srv, "pw").ApplyRunes(b.Runes[0], name, []int{20}, 0, false)
+	if r.OK || !strings.Contains(r.Msg, "Check your runes now") || r.PageID != 20 {
+		t.Fatalf("%+v", r)
+	}
+	srv.Close()
+
+	// 4. the client's rune list can't be read: not a reason to block (the check afterwards still runs)
+	f, srv = newFake(3)
+	if r := client(srv, "pw").ApplyRunes(b.Runes[0], name, nil, 0, false); !r.OK || f.current == 0 {
+		t.Fatalf("%+v", r)
+	}
+	srv.Close()
+}
+
+func TestTooLate(t *testing.T) {
+	read := time.Date(2026, 11, 25, 20, 0, 0, 0, time.UTC)
+	cases := []struct {
+		t     Timer
+		after time.Duration
+		want  bool
+	}{
+		{Timer{"BAN_PICK", 1000}, 0, false},      // your pick timer: the game doesn't start when it ends
+		{Timer{"FINALIZATION", 10000}, 0, false}, // 10 s left
+		{Timer{"FINALIZATION", 10000}, 6500 * time.Millisecond, false},
+		{Timer{"FINALIZATION", 10000}, 7500 * time.Millisecond, true}, // 2.5 s left
+		{Timer{"FINALIZATION", 2000}, 0, true},
+		{Timer{"GAME_STARTING", 0}, 0, true},
+		{Timer{}, 0, false}, // unknown: don't block
+	}
+	for _, c := range cases {
+		if got := c.t.TooLate(read, read.Add(c.after)); got != c.want {
+			t.Errorf("%+v after %v: got %v", c.t, c.after, got)
 		}
 	}
 }

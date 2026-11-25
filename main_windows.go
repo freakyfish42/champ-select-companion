@@ -73,6 +73,8 @@ type App struct {
 	inSelect bool
 	phase    string
 	mode     string
+	timer    core.Timer // champ select's clock, read at timerAt
+	timerAt  time.Time
 	queue    string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
 	clash    bool
 	enemies  []core.EnemyPick     // champions the other team has shown
@@ -281,6 +283,7 @@ func (a *App) watch() {
 		if s, err := lcu.Session(); err == nil {
 			a.mu.Lock()
 			a.enemies = s.EnemyPicks()
+			a.timer, a.timerAt = s.Timer, time.Now()
 			a.mu.Unlock()
 			a.onPick(s.Mine())
 		}
@@ -294,6 +297,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.gen++
 	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
 	a.cl = clashState{}
+	a.timer, a.timerAt = core.Timer{}, time.Time{}
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
@@ -519,6 +523,7 @@ func (a *App) retry() {
 type view struct {
 	Version string          `json:"version"`
 	Test    bool            `json:"test"`
+	TooLate bool            `json:"tooLate"` // the game starts in a moment: Apply is locked
 	State   string          `json:"state"`
 	Msg     string          `json:"msg"`
 	Mode    string          `json:"mode"`
@@ -549,7 +554,7 @@ func (a *App) roleOf() string {
 func (a *App) prefKey() string { return core.PrefKey(a.champ.Alias, a.roleOf()) }
 
 func (a *App) view() view {
-	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
+	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
 		v.Name, v.Alias = "", ""
 	}
@@ -635,21 +640,26 @@ func (a *App) forcePush() {
 
 // stale: the panel showed another champion's build than the one now picked (hovers change fast)
 const stale = "You just changed champion. Check the panel and click again."
+const tooLate = "Too late to change safely: the game starts in a moment."
 
 func (a *App) applyRunes(shown string, i, replaceID int) core.Result {
 	a.mu.Lock()
 	lcu, b, test, cur, own := a.lcu, a.build, a.cfg.TestMode, a.key, append([]int{}, a.cfg.OwnPages...)
+	late := a.timer.TooLate(a.timerAt, time.Now())
 	key, name := a.prefKey(), core.PageName(a.champ.Name, a.roleOf())
 	a.mu.Unlock()
 	if lcu == nil {
 		return core.Result{Msg: "Not connected to League right now."}
+	}
+	if late {
+		return core.Result{Msg: tooLate}
 	}
 	if b == nil || shown != cur || i < 0 || i >= len(b.Runes) {
 		return core.Result{Msg: stale}
 	}
 	r := lcu.ApplyRunes(b.Runes[i], name, own, replaceID, test)
 	log.Printf("runes %s #%d: ok=%v %s", key, i, r.OK, r.Msg)
-	if r.OK && !test && r.PageID != 0 {
+	if !test && r.PageID != 0 { // also when the check afterwards failed: the page the app wrote is still its own
 		a.rememberPage(r.PageID)
 	}
 	if r.OK && !test {
@@ -683,9 +693,13 @@ func (a *App) applySpells(shown string, i int) core.Result {
 	a.mu.Lock()
 	lcu, b, test, pick, cur := a.lcu, a.build, a.cfg.TestMode, a.pick, a.key
 	key := a.prefKey()
+	late := a.timer.TooLate(a.timerAt, time.Now())
 	a.mu.Unlock()
 	if lcu == nil {
 		return core.Result{Msg: "Not connected to League right now."}
+	}
+	if late {
+		return core.Result{Msg: tooLate}
 	}
 	if b == nil || shown != cur || i < 0 || i >= len(b.Summs) {
 		return core.Result{Msg: stale}

@@ -1,10 +1,33 @@
 package core
 
+import "time"
+
 type Session struct {
 	LocalPlayerCellID int        `json:"localPlayerCellId"`
 	MyTeam            []Member   `json:"myTeam"`
 	TheirTeam         []Member   `json:"theirTeam"`
 	Actions           [][]Action `json:"actions"`
+	Timer             Timer      `json:"timer"`
+}
+
+// Timer is champ select's clock. FINALIZATION is the last part, after everyone has locked in; then the game starts.
+type Timer struct {
+	Phase    string `json:"phase"`
+	LeftInMs int64  `json:"adjustedTimeLeftInPhase"`
+}
+
+// SafeMargin: no Apply in the last seconds before the game starts, so a change can't be cut off halfway.
+const SafeMargin = 3 * time.Second
+
+// TooLate: is the game about to start? read is when the timer was read, now is the current time.
+func (t Timer) TooLate(read, now time.Time) bool {
+	switch t.Phase {
+	case "GAME_STARTING":
+		return true
+	case "FINALIZATION":
+		return time.Duration(t.LeftInMs)*time.Millisecond-now.Sub(read) < SafeMargin
+	}
+	return false
 }
 
 type Member struct {

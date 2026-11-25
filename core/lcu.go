@@ -37,9 +37,10 @@ func ParseLockfile(s string) (Creds, error) {
 
 // Client talks to the League client's local API (LCU) on 127.0.0.1.
 type Client struct {
-	base string
-	auth string
-	http *http.Client
+	base   string
+	auth   string
+	http   *http.Client
+	settle time.Duration // wait between reads when checking a write took (the client can lag a moment)
 }
 
 // NewClient connects to the client on this PC (127.0.0.1 only), accepting only a certificate signed by Riot's local root.
@@ -54,7 +55,7 @@ func NewClient(c Creds) *Client {
 }
 
 func NewClientURL(base, password string, hc *http.Client) *Client {
-	return &Client{base: strings.TrimRight(base, "/"), auth: "Basic " + base64.StdEncoding.EncodeToString([]byte("riot:"+password)), http: hc}
+	return &Client{base: strings.TrimRight(base, "/"), auth: "Basic " + base64.StdEncoding.EncodeToString([]byte("riot:"+password)), http: hc, settle: 250 * time.Millisecond}
 }
 
 type HTTPError struct {
