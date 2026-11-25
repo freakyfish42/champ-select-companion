@@ -208,7 +208,7 @@ func (f *fakeLCU) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && r.URL.Path == "/lol-gameflow/v1/gameflow-phase":
 		out("ChampSelect")
 	case r.Method == "GET" && r.URL.Path == "/lol-gameflow/v1/session":
-		out(map[string]any{"map": map[string]any{"gameMode": "CLASSIC"}, "gameData": map[string]any{"queue": map[string]any{"gameMode": "CLASSIC"}}})
+		out(map[string]any{"map": map[string]any{"gameMode": "CLASSIC"}, "gameData": map[string]any{"queue": map[string]any{"gameMode": "CLASSIC", "id": 700, "type": "CLASH"}}})
 	case r.Method == "GET" && r.URL.Path == "/lol-game-data/assets/v1/champion-summary.json":
 		out([]map[string]any{{"id": -1, "name": "None", "alias": "None"}, {"id": 103, "name": "Ahri", "alias": "Ahri"}, {"id": 62, "name": "Wukong", "alias": "MonkeyKing"}})
 	default:
@@ -319,8 +319,8 @@ func TestApplySpellsAndReads(t *testing.T) {
 	if ph, err := c.Phase(); err != nil || ph != "ChampSelect" {
 		t.Fatal(ph, err)
 	}
-	if m, err := c.GameMode(); err != nil || m != "CLASSIC" {
-		t.Fatal(m, err)
+	if g, err := c.Game(); err != nil || g.Mode != "CLASSIC" || !g.Clash {
+		t.Fatal(g, err)
 	}
 	ch, err := c.Champions()
 	if err != nil || ch[62].Alias != "MonkeyKing" || len(ch) != 2 {

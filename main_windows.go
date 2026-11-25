@@ -73,6 +73,11 @@ type App struct {
 	inSelect bool
 	phase    string
 	mode     string
+	clash    bool
+	enemies  []int // champion ids the other team has shown
+	tier     *core.TierList
+	tierAt   time.Time
+	cl       clashState
 	pick     core.Pick
 	champ    core.Champion
 	key      string
@@ -91,6 +96,14 @@ type App struct {
 	hwnd     uintptr
 	uiWanted chan struct{}
 	uiOnce   sync.Once
+}
+
+type clashState struct {
+	Matches []core.ClashMatchInfo `json:"matches"`
+	Scout   *core.Scout           `json:"scout,omitempty"`
+	Loading bool                  `json:"loading"`
+	Err     string                `json:"err,omitempty"`
+	seq     int
 }
 
 type cached struct {
@@ -220,11 +233,11 @@ func (a *App) watch() {
 		needChamps := a.champs == nil
 		a.mu.Unlock()
 		if first {
-			mode, err := lcu.GameMode()
-			if err != nil || mode == "" {
-				mode = "CLASSIC" // unknown: assume Summoner's Rift rather than hide the suggestions
+			g, err := lcu.Game()
+			if err != nil || g.Mode == "" {
+				g.Mode = "CLASSIC" // unknown: assume Summoner's Rift rather than hide the suggestions
 			}
-			a.enterSelect(mode)
+			a.enterSelect(g)
 		}
 		if needChamps {
 			if ch, err := lcu.Champions(); err == nil {
@@ -234,21 +247,29 @@ func (a *App) watch() {
 			}
 		}
 		if s, err := lcu.Session(); err == nil {
+			a.mu.Lock()
+			a.enemies = s.EnemyPicks()
+			a.mu.Unlock()
 			a.onPick(s.Mine())
 		}
 		time.Sleep(600 * time.Millisecond)
 	}
 }
 
-func (a *App) enterSelect(mode string) {
+func (a *App) enterSelect(g core.Game) {
+	mode := g.Mode
 	a.mu.Lock()
-	a.inSelect, a.phase, a.mode = true, "ChampSelect", mode
+	a.inSelect, a.phase, a.mode, a.clash, a.enemies = true, "ChampSelect", mode, g.Clash, nil
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
 	show := a.cfg.ShowPanel
 	a.mu.Unlock()
-	log.Printf("champ select (%s)", mode)
+	log.Printf("champ select (%s, clash=%v)", mode, g.Clash)
+	go a.loadTier()
+	if g.Clash {
+		go a.loadClash("")
+	}
 	if show {
 		a.uiOnce.Do(func() { a.uiWanted <- struct{}{} })
 	}
@@ -314,6 +335,64 @@ func (a *App) fetch(seq int, key string, ch core.Champion, role string) {
 	a.push()
 }
 
+// loadTier keeps the site's tier list (role shares, for guessing enemy roles) for 3 hours.
+func (a *App) loadTier() *core.TierList {
+	a.mu.Lock()
+	t, at := a.tier, a.tierAt
+	a.mu.Unlock()
+	if t != nil && time.Since(at) < 3*time.Hour {
+		return t
+	}
+	nt, err := core.FetchTierList(a.web, core.SiteURL)
+	if err != nil {
+		log.Printf("tier list: %v", err)
+		return t
+	}
+	a.mu.Lock()
+	a.tier, a.tierAt = nt, time.Now()
+	a.mu.Unlock()
+	a.push()
+	return nt
+}
+
+// loadClash reads the team's saved matches from the Clash helper and scouts one (the newest, or id).
+func (a *App) loadClash(id string) {
+	a.mu.Lock()
+	a.cl.seq++
+	seq := a.cl.seq
+	a.cl.Loading, a.cl.Err = true, ""
+	a.mu.Unlock()
+	a.push()
+	finish := func(f func(c *clashState)) {
+		a.mu.Lock()
+		if seq == a.cl.seq {
+			a.cl.Loading = false
+			f(&a.cl)
+		}
+		a.mu.Unlock()
+		a.push()
+	}
+	list, err := core.ClashMatches(a.web, core.ClashURL)
+	if err != nil {
+		finish(func(c *clashState) { c.Err = err.Error() })
+		return
+	}
+	if len(list) == 0 {
+		finish(func(c *clashState) { c.Matches, c.Scout, c.Err = nil, nil, "No saved matches in the Clash helper yet." })
+		return
+	}
+	if id == "" {
+		id = list[0].ID
+	}
+	m, err := core.GetClashMatch(a.web, core.ClashURL, id)
+	if err != nil {
+		finish(func(c *clashState) { c.Matches, c.Err = list, err.Error() })
+		return
+	}
+	sc := core.ScoutTeam(m, a.loadTier())
+	finish(func(c *clashState) { c.Matches, c.Scout = list, &sc })
+}
+
 func (a *App) retry() {
 	a.mu.Lock()
 	a.key = ""
@@ -340,6 +419,8 @@ type view struct {
 	Spells  []int           `json:"spellOrder"`
 	Pref    core.Pref       `json:"remembered"`
 	Applied core.Pref       `json:"applied"`
+	Matchup *core.Matchup   `json:"matchup,omitempty"`
+	Clash   *clashState     `json:"clash,omitempty"`
 }
 
 func (a *App) roleOf() string {
@@ -361,6 +442,18 @@ func (a *App) view() view {
 		v.Pref = a.prefs.Get(a.prefKey())
 		v.Runes, v.Spells = core.Order(a.build, v.Pref)
 		v.Applied = a.applied[a.prefKey()]
+		var en []core.Champion
+		for _, id := range a.enemies {
+			if ch, ok := a.champs[id]; ok {
+				en = append(en, ch)
+			}
+		}
+		m := core.LaneMatchup(a.build, a.roleOf(), en, a.tier)
+		v.Matchup = &m
+	}
+	if a.clash && a.state != "unsupported" {
+		c := a.cl
+		v.Clash = &c
 	}
 	return v
 }
@@ -514,6 +607,8 @@ func (a *App) uiLoop() {
 	})
 	_ = w.Bind("openBuild", func() { a.openBuild() })
 	_ = w.Bind("retry", func() { go a.retry() })
+	_ = w.Bind("clashMatch", func(id string) { go a.loadClash(id) })
+	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	w.SetHtml(panelPage())
 	a.mu.Lock()
 	a.w, a.hwnd = w, h

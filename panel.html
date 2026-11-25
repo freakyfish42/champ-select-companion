@@ -47,6 +47,17 @@ button.ap:disabled{opacity:.6;cursor:default}
 .empty{color:var(--mute);padding:28px 6px;text-align:center;font-size:13px}
 .foot{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--mute)}
 .foot a{color:var(--gold);cursor:pointer;text-decoration:none}.foot a:hover{text-decoration:underline}
+.mu{display:flex;align-items:center;gap:8px;margin:10px 0 2px;padding:7px 9px;border:1px solid rgba(59,52,34,.8);border-radius:10px;background:rgba(0,0,0,.18);font-size:12.5px}
+.mu img{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);flex:none}
+.mu .t{flex:1}.mu .t small{display:block;color:var(--mute);font-size:11.5px}.mu .v{text-align:right;white-space:nowrap}.mu .v b{display:block;font-size:14px}
+.mu.wait{color:var(--mute)}
+.cl select{font:12px Inter,sans-serif;color:var(--ink);background:#0b1522;border:1px solid var(--line);border-radius:6px;padding:3px 6px;flex:1;min-width:0}
+.cl .x2{font:600 11.5px Inter,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer}
+.en{border-top:1px solid rgba(59,52,34,.6);padding:6px 0}.en:first-of-type{border-top:0}
+.en .who{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:3px}.en .who b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl{font-size:10.5px;color:var(--gold);border:1px solid var(--line);border-radius:5px;padding:0 5px;white-space:nowrap}
+.cc{display:flex;flex-wrap:wrap;gap:3px 10px}.cc span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;white-space:nowrap}.cc img{width:20px;height:20px;border-radius:4px}.cc small{color:var(--mute)}
+.bans{display:flex;flex-direction:column;gap:4px}.bans div{display:flex;align-items:center;gap:6px;font-size:12px}.bans img{width:24px;height:24px;border-radius:5px;border:1px solid #6e3434}.bans small{color:var(--mute)}
 .test{background:#4a3a12;color:#ffd68a;font-size:11.5px;padding:5px 12px;text-align:center}
 </style>
 </head>
@@ -117,19 +128,46 @@ function skills(b){
   const first=b.skills&&b.skills.order?b.skills.order.slice(0,3).join(' '):'';
   return `<h3>Skill order</h3><div class="row">${mx.map(box).join('<span class="gt">›</span>')}${first?`<small style="color:var(--mute);margin-left:auto">Start ${esc(first)}</small>`:''}</div>`}
 
+function matchup(m){
+  if(!m)return '';
+  if(m.state==='waiting')return `<div class="mu wait">Lane: waiting for their ${esc((RN[m.role]||'').toLowerCase())} pick</div>`;
+  const ic=m.oppId&&ver?img(`${DD}${ver}/img/champion/${m.oppId}.png`,'',m.opp):'';
+  const v=m.state==='ok'?`<div class="v"><b class="${m.wr>=.52?'hi':m.wr<.48?'lo':''}">${pct(m.wr)}</b><small style="color:var(--mute)">${num(m.play)} games</small></div>`:'<div class="v"><small style="color:var(--mute)">Too few games<br>for this matchup</small></div>';
+  const verdict=m.state!=='ok'?'':m.wr>=.52?'Favoured':m.wr<.48?'Hard matchup':'Even';
+  return `<div class="mu">${ic}<div class="t">vs <b>${esc(m.opp)}</b>${m.sure?'':' <span class="tag">likely</span>'}<small>${verdict?esc(verdict)+' · ':''}your win rate in lane</small></div>${v}</div>`}
+
+function clash(c){
+  if(!c)return '';
+  const sc=c.scout,opts=(c.matches||[]).map(x=>`<option value="${esc(x.id)}"${sc&&sc.matchId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
+  let h=`<h3>Clash scouting</h3><div class="row cl">${opts?`<select id="clsel" aria-label="Saved match">${opts}</select>`:''}<button class="x2" id="clref">${c.loading?'Loading…':'Refresh'}</button></div>`;
+  if(c.err)h+=`<div class="msg err">${esc(c.err)}</div><div class="msg"><a id="clopen" style="color:var(--gold);cursor:pointer">Open the Clash helper ↗</a></div>`;
+  if(!sc)return h+(c.loading?'<div class="msg">Reading the Clash helper…</div>':'');
+  const ci=x=>x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):'';
+  h+=(sc.players||[]).map(p=>`<div class="en"><div class="who"><span class="rl">${esc(RN[p.role]||'?')}${p.guessed?'?':''}</span><b title="${esc(p.name)}">${esc(p.name)}</b></div>
+    <div class="cc">${(p.champs||[]).map(x=>`<span>${ci(x)}${esc(x.name)} <small>${num(x.games)} games · ${pct(x.wr)}</small></span>`).join('')||'<small style="color:var(--mute)">No champions saved</small>'}</div></div>`).join('');
+  if((sc.bans||[]).length)h+=`<h3>Ban ideas</h3><div class="bans">${sc.bans.map(x=>`<div>${ci(x)}<span>${esc(x.name)} <small>${esc(x.player)} · ${num(x.games)} games · ${pct(x.wr)}</small></span></div>`).join('')}</div>`;
+  return h+'<div class="msg">From the team\'s Clash helper. A ? after the role means it was guessed from their champions.</div>'}
+
 function render(v){
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
   V=v;head(v);const m=$('main');
-  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`;return}
+  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
   if(v.state==='unsupported'){m.innerHTML=`<div class="empty">No suggestions in this mode. The stats are for ranked Summoner's Rift, so they'd be wrong for ${v.mode==='ARAM'?'ARAM':v.mode==='CHERRY'?'Arena':'this mode'}.</div>`;return}
-  if(v.state==='loading'){m.innerHTML=`<div class="empty">Loading ${esc(v.name)}…</div>`;return}
+  if(v.state==='loading'){m.innerHTML=`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
   if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
   if(b.region&&b.region!=='EUW')$('ver').textContent='All regions (op.gg EUW is down)';
   const ro=v.runeOrder||[],so=v.spellOrder||[];
-  m.innerHTML=(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+  m.innerHTML=matchup(v.matchup)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
     +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
-    +skills(b);
+    +skills(b)+clash(v.clash);
+  bindClash();
+}
+function bindClash(){
+  const s=$('clsel'),r=$('clref'),o=$('clopen');
+  if(s)s.onchange=()=>window.clashMatch&&clashMatch(s.value);
+  if(r)r.onclick=()=>window.clashMatch&&clashMatch(s?s.value:'');
+  if(o)o.onclick=()=>window.openClash&&openClash();
 }
 window.render=render;
 

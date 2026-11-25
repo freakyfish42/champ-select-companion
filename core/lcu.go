@@ -114,21 +114,32 @@ func (c *Client) Phase() (string, error) {
 	return p, err
 }
 
-// GameMode of the game being set up: "CLASSIC" (Summoner's Rift), "ARAM", "CHERRY" (Arena), ...
-func (c *Client) GameMode() (string, error) {
+// Game is the game being set up. Mode: "CLASSIC" (Summoner's Rift), "ARAM", "CHERRY" (Arena), ...
+type Game struct {
+	Mode  string
+	Clash bool
+}
+
+func (c *Client) Game() (Game, error) {
 	var s struct {
 		Map      struct{ GameMode string } `json:"map"`
 		GameData struct {
-			Queue struct{ GameMode string } `json:"queue"`
+			Queue struct {
+				ID       int    `json:"id"`
+				GameMode string `json:"gameMode"`
+				Type     string `json:"type"`
+			} `json:"queue"`
 		} `json:"gameData"`
 	}
 	if err := c.Do("GET", "/lol-gameflow/v1/session", nil, &s); err != nil {
-		return "", err
+		return Game{}, err
 	}
-	if s.GameData.Queue.GameMode != "" {
-		return s.GameData.Queue.GameMode, nil
+	q := s.GameData.Queue
+	g := Game{Mode: q.GameMode, Clash: q.Type == "CLASH" || q.ID == 700}
+	if g.Mode == "" {
+		g.Mode = s.Map.GameMode
 	}
-	return s.Map.GameMode, nil
+	return g, nil
 }
 
 // Champion as the client knows it. Alias is the Data Dragon id (e.g. "MonkeyKing" for Wukong).

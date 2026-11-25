@@ -51,6 +51,7 @@ type Build struct {
 	Region   string          `json:"region"`
 	Runes    []RunePage      `json:"runes"`
 	Summs    []SpellPair     `json:"summs"`
+	Vs       []VsEntry       `json:"vs"` // this champion's win rate against each lane opponent
 	Raw      json.RawMessage `json:"-"`
 }
 

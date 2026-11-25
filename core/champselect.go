@@ -3,6 +3,7 @@ package core
 type Session struct {
 	LocalPlayerCellID int        `json:"localPlayerCellId"`
 	MyTeam            []Member   `json:"myTeam"`
+	TheirTeam         []Member   `json:"theirTeam"`
 	Actions           [][]Action `json:"actions"`
 }
 
@@ -64,6 +65,17 @@ func (s Session) Mine() Pick {
 		p.ChampionID = me.PickIntent
 	}
 	return p
+}
+
+// EnemyPicks are the champions the other team has locked in or shown so far.
+func (s Session) EnemyPicks() []int {
+	var ids []int
+	for _, m := range s.TheirTeam {
+		if m.ChampionID > 0 {
+			ids = append(ids, m.ChampionID)
+		}
+	}
+	return ids
 }
 
 // RoleFromPosition maps the client's assigned positions to the site's role names.

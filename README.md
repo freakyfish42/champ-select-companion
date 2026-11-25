@@ -12,6 +12,11 @@ and role (EUW, Emerald+). Click **Apply** and it sets them in the client. Nothin
   every slot is full, it asks which page to replace.
 - Spells keep their keys: if Flash is on F, it stays on F.
 - It remembers what you picked per champion and role, and shows that first next time.
+- **Lane matchup**: once the enemy laner is picked, the panel guesses who's in your lane (from the site's role stats)
+  and shows your win rate against them, with how many games that's based on.
+- **Clash scouting** (Clash games only): reads the team's saved matches from the Clash helper (clash.lømsland.no,
+  newest first, switchable) and shows each enemy's role (saved, or guessed with a ?), their three most played champions
+  in that role, and three ban ideas.
 - No panel in ARAM, Arena and other modes (the stats are ranked Summoner's Rift).
 - Updates itself from this repo's releases, never during champ select or a game.
 
