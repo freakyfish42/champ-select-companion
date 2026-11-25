@@ -36,9 +36,7 @@ var (
 	pSetProcessDpiAwareCtx = user32.NewProc("SetProcessDpiAwarenessContext")
 	pDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
 	pSetLayeredAttrs       = user32.NewProc("SetLayeredWindowAttributes")
-	pRegisterHotKey        = user32.NewProc("RegisterHotKey")
-	pUnregisterHotKey      = user32.NewProc("UnregisterHotKey")
-	pPeekMessageW          = user32.NewProc("PeekMessageW")
+	pGetAsyncKeyState      = user32.NewProc("GetAsyncKeyState")
 )
 
 type rect struct{ Left, Top, Right, Bottom int32 }
@@ -67,11 +65,6 @@ const (
 	wsExTransparent  = 0x00000020 // clicks go through to the game
 	wsExNoActivate   = 0x08000000
 	lwaAlpha         = 2
-	wmHotkey         = 0x0312
-	modControl       = 0x2
-	modShift         = 0x4
-	modNoRepeat      = 0x4000
-	pmRemove         = 1
 )
 
 func setDPIAware() {
@@ -290,8 +283,11 @@ func setCardStyle(h uintptr, card, clickThrough bool) {
 
 // cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default
 // top left, a little down from the top.
-func cardRect(game rect, scale float64, dx, dy int32) rect {
-	w, h := int32(300*scale), int32(236*scale)
+func cardRect(game rect, scale float64, dx, dy int32, moving bool) rect {
+	w, h := int32(244*scale), int32(74*scale)
+	if moving {
+		h = int32(112 * scale) // room for the Done button
+	}
 	if dx == 0 && dy == 0 {
 		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
 	}
@@ -299,38 +295,18 @@ func cardRect(game rect, scale float64, dx, dy int32) rect {
 	return rect{Left: l, Top: t, Right: l + w, Bottom: t + h}
 }
 
-// The hotkey that hides and shows the card. It's only claimed while a game with a card is running, so it
-// doesn't take Ctrl+Shift+B away from other programs the rest of the time.
+// The hotkey that hides and shows the card. Only watched while a game with a card is running.
 const cardHotkey = "Ctrl+Shift+B"
 
-func registerHotkey() bool {
-	r, _, _ := pRegisterHotKey.Call(0, 1, modControl|modShift|modNoRepeat, 'B')
-	return r != 0
-}
+const (
+	vkShift   = 0x10
+	vkControl = 0x11
+)
 
-func unregisterHotkey() { pUnregisterHotKey.Call(0, 1) }
-
-// hotkeyPressed takes this thread's pending messages; true if the hotkey was among them.
-func hotkeyPressed() bool {
-	var msg struct {
-		Hwnd    uintptr
-		Message uint32
-		WParam  uintptr
-		LParam  uintptr
-		Time    uint32
-		Pt      struct{ X, Y int32 }
-		Private uint32
-	}
-	hit := false
-	for {
-		r, _, _ := pPeekMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, pmRemove)
-		if r == 0 {
-			return hit
-		}
-		if msg.Message == wmHotkey {
-			hit = true
-		}
-	}
+// cardKeysDown: are Ctrl, Shift and B held right now? (Key state only: no keyboard hook.)
+func cardKeysDown() bool {
+	down := func(vk uintptr) bool { r, _, _ := pGetAsyncKeyState.Call(vk); return r&0x8000 != 0 }
+	return down(vkControl) && down(vkShift) && down('B')
 }
 
 // startDrag lets the player move the frameless panel by its header.

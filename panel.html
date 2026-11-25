@@ -62,22 +62,22 @@ button.ap:disabled{opacity:.6;cursor:default}
 .ci h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}
 .ci div{display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0}.ci img{width:22px;height:22px;border-radius:5px}.ci span{flex:1}.ci small{color:var(--mute)}
 .test{background:#4a3a12;color:#ffd68a;font-size:11.5px;padding:5px 12px;text-align:center}
-/* the in-game card: compact, read at a glance, no buttons except while moving */
+/* the in-game card: small, read at a glance, no buttons except while moving */
 body.ig .top,body.ig .foot,body.ig .test{display:none}
-body.ig{background:rgba(7,13,23,.94);border-radius:10px}
-body.ig main{padding:8px 10px 6px;overflow:hidden}
-.igh{display:flex;align-items:center;gap:7px;margin-bottom:6px}
-.igh img{width:26px;height:26px;border-radius:6px;border:1px solid var(--gold)}
-.igh b{font:700 14px Cinzel,Georgia,serif}.igh small{color:var(--mute)}
-.igh .lv{margin-left:auto;font-weight:700;color:var(--gold);font-size:12.5px;white-space:nowrap}
-.sq{display:grid;grid-template-columns:repeat(18,1fr);gap:2px;margin:5px 0 7px}
-.sq span{display:grid;place-items:center;height:18px;border-radius:3px;background:var(--chip);font:700 10.5px Inter,sans-serif;color:var(--mute)}
+body.ig{background:#0a111c;border-color:rgba(200,170,110,.35);border-radius:8px}
+body.ig main{padding:5px 7px 4px;overflow:hidden}
+.igh{display:flex;align-items:center;gap:5px;font-size:11.5px;line-height:1}
+.igh img{width:18px;height:18px;border-radius:4px}
+.igh .lv{font-weight:700;color:var(--gold)}
+.igh .mx{margin-left:auto;color:var(--mute);font-weight:600;letter-spacing:.02em}
+.sq{display:grid;grid-template-columns:repeat(18,1fr);gap:1px;margin:4px 0}
+.sq span{display:grid;place-items:center;height:14px;border-radius:2px;background:#132034;font:700 9px Inter,sans-serif;color:var(--mute)}
 .sq span.q{color:#9fc4ff}.sq span.w{color:#9ee6b0}.sq span.e{color:#f0d08a}.sq span.r{color:#ff9f9f;background:#2a1820}
-.sq span.done{opacity:.35}.sq span.now{outline:2px solid var(--gold);opacity:1}
-.it{display:flex;align-items:center;gap:4px;margin:3px 0;font-size:11px;color:var(--mute)}
-.it b{width:34px;font-weight:600;color:var(--mute)}.it img{width:24px;height:24px;border-radius:4px;border:1px solid var(--line)}
-.hk{font-size:10.5px;color:var(--mute);margin-top:4px;text-align:right}
-.mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:11.5px;color:var(--gold)}
+.sq span.done{opacity:.3}.sq span.now{outline:1.5px solid var(--gold);opacity:1}
+.its{display:flex;align-items:center;gap:2px}
+.its img{width:19px;height:19px;border-radius:3px}
+.its i{width:1px;height:14px;background:var(--line);margin:0 3px}
+.mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font-size:11px;color:var(--gold)}
 body.ig.moving{outline:2px dashed var(--gold);cursor:move}
 </style>
 </head>
@@ -183,18 +183,18 @@ function clash(c){
   return h}
 function ago(t){const m=Math.max(0,Math.round((Date.now()-Number(t))/60000));return m<90?`${m} min ago`:m<48*60?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} days ago`}
 
-/* in game: the plan from champ select, and where you are in the skill order */
+/* in game: the plan from champ select, and where you are in the skill order. Small on purpose: it sits over the game. */
 function ingame(v){
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;if(b&&b.version)ver=b.version;
   const id=(b&&b.id)||v.alias,lv=v.level||0,ord=(b&&b.skills&&b.skills.order)||[];
-  const items=(t,x)=>x&&x.items&&x.items.length?`<div class="it"><b>${t}</b>${x.items.map(i=>ver?img(`${DD}${ver}/img/item/${Number(i.id)}.png`,'',i.name):esc(i.name)).join('')}</div>`:'';
-  const now=lv&&ord[lv-1]?`Level ${lv}: ${esc(ord[lv-1])}`:lv?`Level ${lv}`:'Loading';
-  const mx=b&&b.max&&b.max.order?b.max.order.map(k=>`<span class="sk" style="width:22px;height:22px"><span>${esc(k)}</span></span>`).join('<span class="gt">›</span>'):'';
-  return `<div class="igh" id="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<b>${esc(v.name)}</b><small>${esc(RN[v.role]||'')}</small><span class="lv">${now}</span></div>`
-    +(mx?`<div class="row" style="gap:3px">${mx}<small style="color:var(--mute);margin-left:auto">max order</small></div>`:'')
+  const ic=x=>x&&x.items?x.items.map(i=>ver?img(`${DD}${ver}/img/item/${Number(i.id)}.png`,'',i.name):'').join(''):'';
+  const groups=[ic(b&&b.starter),ic(b&&b.core),ic(b&&b.boots)].filter(Boolean);
+  const now=lv&&ord[lv-1]?`Lv ${lv} · ${esc(ord[lv-1])}`:lv?`Lv ${lv}`:esc(v.name||'');
+  const mx=b&&b.max&&b.max.order?b.max.order.map(esc).join(' › '):'';
+  return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span><span class="mx">${mx}</span></div>`
     +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span class="${esc(String(k).toLowerCase())}${lv&&i<lv-1?' done':''}${lv&&i===lv-1?' now':''}">${esc(k)}</span>`).join('')}</div>`:'')
-    +items('Start',b&&b.starter)+items('Core',b&&b.core)+items('Boots',b&&b.boots)
-    +(v.moving?`<div class="mv"><span>Drag the card where you want it</span><button class="ap" id="mvdone">Done</button></div>`:`<div class="hk">${esc(v.hotkey||'')} hides</div>`)}
+    +(groups.length?`<div class="its">${groups.join('<i></i>')}</div>`:'')
+    +(v.moving?`<div class="mv"><span>Drag it where you want it</span><button class="ap" id="mvdone">Done</button></div>`:'')}
 
 function render(v){
   document.body.classList.toggle('ig',v.state==='ingame');document.body.classList.toggle('moving',!!v.moving);

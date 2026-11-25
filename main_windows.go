@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -397,28 +396,26 @@ func (a *App) toggleCard() {
 	a.mu.Unlock()
 }
 
-// hotkeyLoop owns the hotkey: claimed only while a game with a card runs.
+// hotkeyLoop watches Ctrl+Shift+B while a game with a card runs. League blocks normal Windows hotkeys while the
+// game has focus, so the app reads those three keys' state itself (it doesn't hook the keyboard, doesn't see any
+// other key, and only looks while a game with a card is running).
 func (a *App) hotkeyLoop() {
-	runtime.LockOSThread() // RegisterHotKey's messages go to the thread that registered it
-	reg, warned := false, false
+	was := false
 	for {
 		a.mu.Lock()
 		want := a.inGame && a.cardReady()
 		a.mu.Unlock()
-		switch {
-		case want && !reg:
-			if reg = registerHotkey(); !reg && !warned {
-				log.Printf("couldn't claim %s for the card (another program has it)", cardHotkey)
-				warned = true
-			}
-		case !want && reg:
-			unregisterHotkey()
-			reg, warned = false, false
+		if !want {
+			was = false
+			time.Sleep(300 * time.Millisecond)
+			continue
 		}
-		if hotkeyPressed() && reg {
+		down := cardKeysDown()
+		if down && !was {
 			a.toggleCard()
 		}
-		time.Sleep(100 * time.Millisecond)
+		was = down
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -966,11 +963,18 @@ func (a *App) follow(h uintptr) {
 					styled, styledMoving = true, moving
 				}
 				if gr, ok := windowRect(g); ok {
-					r := cardRect(gr, dpiScale(g), dx, dy)
-					if !moving && (r != lastCard || !shown) {
+					r := cardRect(gr, dpiScale(g), dx, dy, moving)
+					switch {
+					case !moving && (r != lastCard || !shown):
 						placeTopmost(h, r, true)
 						lastCard = r
-					} else if !shown {
+					case moving && lastCard.Bottom-lastCard.Top != r.Bottom-r.Top: // grow for the Done button, in place
+						if cur, ok := windowRect(h); ok {
+							r = rect{Left: cur.Left, Top: cur.Top, Right: cur.Left + r.Right - r.Left, Bottom: cur.Top + r.Bottom - r.Top}
+						}
+						placeTopmost(h, r, true)
+						lastCard = r
+					case !shown:
 						placeTopmost(h, r, true)
 					}
 					shown = true

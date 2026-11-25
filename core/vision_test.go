@@ -436,12 +436,12 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 			t.Errorf("the in-game card must not show %s", bad)
 		}
 	}
-	if !strings.Contains(s, "want := a.inGame && a.cardReady()") {
-		t.Error("the hotkey must only be claimed while a game with a card runs")
+	if !strings.Contains(s, "want := a.inGame && a.cardReady()") || strings.Count(s, "cardKeysDown()") != 1 {
+		t.Error("the card's keys must only be looked at while a game with a card runs")
 	}
 	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go"} {
 		b, _ := os.ReadFile(f)
-		for _, input := range []string{"SendInput", "keybd_event", "mouse_event", "SetCursorPos"} {
+		for _, input := range []string{"SendInput", "keybd_event", "mouse_event", "SetCursorPos", "SetWindowsHookEx", "RegisterRawInputDevices"} {
 			if strings.Contains(string(b), input) {
 				t.Errorf("%s sends input (%s): the app never plays for you", f, input)
 			}
