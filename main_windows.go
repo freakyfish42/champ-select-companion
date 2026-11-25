@@ -90,6 +90,7 @@ type App struct {
 	level      int        // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
 	cardHidden bool       // hidden with the hotkey, for this game
 	moving     bool       // the player is moving the card (it takes clicks while moving)
+	cardH      int32      // the card's height as the page measured it (CSS px)
 	timer      core.Timer // champ select's clock, read at timerAt
 	timerAt    time.Time
 	queue      string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
@@ -954,6 +955,14 @@ func (a *App) uiLoop() {
 	_ = w.Bind("clashRefresh", func() { go a.refreshClash() })
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	_ = w.Bind("cardDone", func() { go a.setMoving(false) })
+	_ = w.Bind("cardHeight", func(px int) {
+		if px < 40 || px > 400 {
+			return
+		}
+		a.mu.Lock()
+		a.cardH = int32(px)
+		a.mu.Unlock()
+	})
 	w.SetHtml(panelPage())
 	a.mu.Lock()
 	a.w, a.hwnd = w, h
@@ -976,7 +985,7 @@ func (a *App) follow(h uintptr) {
 		card := a.inGame && a.cardReady() && !a.cardHidden
 		moving := a.moving
 		see := a.cfg.cardAlpha() < 100
-		dx, dy := a.cfg.CardDX, a.cfg.CardDY
+		dx, dy, ch := a.cfg.CardDX, a.cfg.CardDY, a.cardH
 		a.mu.Unlock()
 		if card {
 			g, fg := gameWindow(), foreground()
@@ -986,12 +995,12 @@ func (a *App) follow(h uintptr) {
 					styled, styledMoving, styledSee = true, moving, see
 				}
 				if gr, ok := windowRect(g); ok {
-					r := cardRect(gr, dpiScale(g), dx, dy, moving)
+					r := cardRect(gr, dpiScale(g), dx, dy, ch)
 					switch {
 					case !moving && (r != lastCard || !shown):
 						placeTopmost(h, r, true)
 						lastCard = r
-					case moving && lastCard.Bottom-lastCard.Top != r.Bottom-r.Top: // grow for the Done button, in place
+					case moving && lastCard.Bottom-lastCard.Top != r.Bottom-r.Top: // new height while moving: keep the spot
 						if cur, ok := windowRect(h); ok {
 							r = rect{Left: cur.Left, Top: cur.Top, Right: cur.Left + r.Right - r.Left, Bottom: cur.Top + r.Bottom - r.Top}
 						}

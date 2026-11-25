@@ -320,11 +320,12 @@ func perPixelAlpha(h uintptr, on bool) {
 
 // cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default
 // top left, a little down from the top.
-func cardRect(game rect, scale float64, dx, dy int32, moving bool) rect {
-	w, h := int32(244*scale), int32(74*scale)
-	if moving {
-		h = int32(112 * scale) // room for the Done button
+// cssH is the card's height as the page measured it (CSS px), so nothing is ever cut off.
+func cardRect(game rect, scale float64, dx, dy, cssH int32) rect {
+	if cssH < 40 {
+		cssH = 96
 	}
+	w, h := int32(300*scale), int32(float64(cssH)*scale)
 	if dx == 0 && dy == 0 {
 		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
 	}

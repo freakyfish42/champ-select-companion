@@ -1,0 +1,59 @@
+# Release: tests, builds, signs and publishes a new version of Champ Select Companion.
+# Run it from the repo's Actions tab → Release → Run workflow, with the new version (e.g. v1.0.3).
+# Needs the repository secret SIGNING_KEY (the one line in %APPDATA%\companion-sign\signing.key).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "New version, e.g. v1.0.3"
+        required: true
+      notes:
+        description: "What changed (shown on the release page)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      V: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: Check the version
+        run: |
+          [[ "$V" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::The version must look like v1.2.3"; exit 1; }
+          if gh release view "$V" >/dev/null 2>&1; then echo "::error::$V is already released"; exit 1; fi
+          echo "LATEST=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)" >> "$GITHUB_ENV"
+
+      - name: Install the resource compiler (icon, manifest)
+        run: sudo apt-get update -q && sudo apt-get install -y -q llvm
+
+      - name: Test and build
+        run: ./build.sh "$V"
+
+      - name: Sign
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: go run ./cmd/ci-sign dist/champ-select-companion.exe "$V" "$LATEST"
+
+      - name: Publish
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release create "$V" dist/champ-select-companion.exe dist/champ-select-companion.exe.sig \
+            --title "$V" --notes "${NOTES:-Champ Select Companion $V}" --target "$GITHUB_SHA" --latest
+          sha256sum dist/champ-select-companion.exe
