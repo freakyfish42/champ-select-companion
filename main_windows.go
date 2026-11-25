@@ -1,5 +1,5 @@
-// lømsland companion: a tray app that watches League's champ select and shows a small panel
-// beside the client with build.lømsland.no's rune pages and summoner spells, applied on click.
+// Champ Select Companion: a tray app that watches League's champ select and shows a small panel
+// beside the client with the build site's rune pages and summoner spells, applied on click.
 package main
 
 import (
@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/freakyfish42/lomsland-companion/core"
+	"github.com/freakyfish42/champ-select-companion/core"
 	webview "github.com/jchv/go-webview2"
 	"github.com/jchv/go-webview2/webviewloader"
 )
@@ -163,12 +163,13 @@ func main() {
 	}
 	if !ok {
 		if !strings.Contains(args, "--autostart") && !waits {
-			messageBox("lømsland companion is already running. Look for its icon in the tray, next to the clock.", mbIconInfo)
+			messageBox("Champ Select Companion is already running. Look for its icon in the tray, next to the clock.", mbIconInfo)
 		}
 		return
 	}
 	_ = mutex
 	cleanupOld(dir)
+	migrateOld(dir)
 
 	a := &App{dir: dir, prefs: core.LoadPrefs(filepath.Join(dir, "picks.json")), web: &http.Client{Timeout: 10 * time.Second},
 		cfg: Config{ShowPanel: true}, cache: map[string]cached{}, applied: map[string]core.Pref{}, uiWanted: make(chan struct{}, 1), state: "waiting"}
@@ -184,7 +185,7 @@ func appDir() string {
 	if base == "" {
 		base, _ = os.UserConfigDir()
 	}
-	return filepath.Join(base, "lomsland-companion")
+	return filepath.Join(base, "champ-select-companion")
 }
 
 func setupLog(dir string) {
@@ -694,7 +695,7 @@ func (a *App) uiLoop() {
 	if _, err := webviewloader.GetInstalledVersion(); err != nil {
 		log.Printf("WebView2 missing: %v", err)
 		a.setStatus("Panel needs Microsoft Edge WebView2")
-		messageBox("The panel needs Microsoft Edge WebView2, which comes with Windows 10 and 11 but is missing here.\n\nInstall it from Microsoft (the “Evergreen Bootstrapper”), then restart lømsland companion.", mbIconWarning)
+		messageBox("The panel needs Microsoft Edge WebView2, which comes with Windows 10 and 11 but is missing here.\n\nInstall it from Microsoft (the “Evergreen Bootstrapper”), then restart Champ Select Companion.", mbIconWarning)
 		openURL("https://developer.microsoft.com/microsoft-edge/webview2/")
 		select {}
 	}

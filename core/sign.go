@@ -20,7 +20,7 @@ import (
 // ---- signed updates ----
 //
 // Every release exe carries its version between these markers (set at build time). The owner signs
-// "lomsland-companion|<version>|<sha256 of exe>" with an Ed25519 key that only exists on his PC;
+// "champ-select-companion|<version>|<sha256 of exe>" with an Ed25519 key that only exists on his PC;
 // the app has the matching public key built in and installs nothing without a valid signature.
 // A taken-over GitHub account can't sign, and an old signed release can't be passed off as new.
 
@@ -50,14 +50,14 @@ func TagInBinary(bin []byte) string {
 
 func SignedMessage(tag string, bin []byte) []byte {
 	sum := sha256.Sum256(bin)
-	return []byte(fmt.Sprintf("lomsland-companion|%s|%x", tag, sum))
+	return []byte(fmt.Sprintf("champ-select-companion|%s|%x", tag, sum))
 }
 
 // SignRelease returns the .sig file contents for an exe.
 func SignRelease(priv ed25519.PrivateKey, bin []byte) (tag string, sig []byte, err error) {
 	tag = TagInBinary(bin)
 	if tag == "" {
-		return "", nil, errors.New("this file isn't a lømsland companion release (no version inside)")
+		return "", nil, errors.New("this file isn't a Champ Select Companion release (no version inside)")
 	}
 	s := ed25519.Sign(priv, SignedMessage(tag, bin))
 	return tag, []byte(base64.StdEncoding.EncodeToString(s) + "\n"), nil

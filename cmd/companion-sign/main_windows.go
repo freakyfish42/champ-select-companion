@@ -1,4 +1,4 @@
-// lomsland-sign signs lømsland companion releases with a key that stays on the owner's PC.
+// companion-sign signs Champ Select Companion releases with a key that stays on the owner's PC.
 //
 //	Double-click:            creates the key the first time and shows its public part.
 //	Drop an exe onto it:     writes <exe>.sig next to it. Upload both to the GitHub release.
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/freakyfish42/lomsland-companion/core"
+	"github.com/freakyfish42/champ-select-companion/core"
 	"golang.org/x/sys/windows"
 )
 
@@ -27,7 +27,7 @@ func say(text string, warn bool) {
 		icon = 0x30
 	}
 	t, _ := windows.UTF16PtrFromString(text)
-	c, _ := windows.UTF16PtrFromString("lømsland release signing")
+	c, _ := windows.UTF16PtrFromString("Release signing")
 	msgBox.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), icon)
 }
 
@@ -36,8 +36,17 @@ func keyPath() string {
 	if base == "" {
 		base, _ = os.UserConfigDir()
 	}
-	return filepath.Join(base, "lomsland-sign", "signing.key")
+	p := filepath.Join(base, "companion-sign", "signing.key")
+	// a key made by the earlier name of this tool is still the owner's key
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		if old := filepath.Join(base, "lomsland-sign", "signing.key"); fileExists(old) {
+			return old
+		}
+	}
+	return p
 }
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func loadKey() (ed25519.PrivateKey, error) {
 	b, err := os.ReadFile(keyPath())
@@ -79,11 +88,11 @@ func main() {
 		}
 		say(head+"\n\n"+pub+"\n\n"+copied+
 			"The private part is in\n"+keyPath()+"\nIt never leaves this PC. Keep a copy on a USB stick: without it you can't sign updates, "+
-			"and everyone would have to reinstall by hand.\n\nTo sign a release, drag lomsland-companion.exe onto lomsland-sign.exe.", false)
+			"and everyone would have to reinstall by hand.\n\nTo sign a release, drag champ-select-companion.exe onto companion-sign.exe.", false)
 		return
 	}
 	if err != nil {
-		say("No signing key on this PC yet. Double-click lomsland-sign.exe first.", true)
+		say("No signing key on this PC yet. Double-click companion-sign.exe first.", true)
 		return
 	}
 	done := []string{}

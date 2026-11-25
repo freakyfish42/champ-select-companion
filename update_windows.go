@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/freakyfish42/lomsland-companion/core"
+	"github.com/freakyfish42/champ-select-companion/core"
 	"golang.org/x/sys/windows"
 )
 
 const (
-	exeName   = "lomsland-companion.exe"
-	latestAPI = "https://api.github.com/repos/freakyfish42/lomsland-companion/releases/latest"
+	exeName   = "champ-select-companion.exe"
+	latestAPI = "https://api.github.com/repos/freakyfish42/champ-select-companion/releases/latest"
 )
 
 func installedExe(dir string) string { return filepath.Join(dir, exeName) }
@@ -31,12 +31,12 @@ func isInstalledCopy(dir string) bool {
 	return strings.EqualFold(filepath.Clean(exe), filepath.Clean(installedExe(dir)))
 }
 
-// install copies the downloaded exe to %LOCALAPPDATA%\lomsland-companion, turns on start with Windows and starts it.
+// install copies the downloaded exe to %LOCALAPPDATA%\champ-select-companion, turns on start with Windows and starts it.
 // Copying the bytes (not the file) also leaves Windows' "downloaded from the internet" mark behind.
 func install(dir string) {
 	m, ok := singleInstance()
 	if !ok {
-		messageBox("lømsland companion is already running. Look for its icon in the tray, next to the clock.", mbIconInfo)
+		messageBox("Champ Select Companion is already running. Look for its icon in the tray, next to the clock.", mbIconInfo)
 		return
 	}
 	release := sync.OnceFunc(func() { windows.CloseHandle(m) })
@@ -46,7 +46,7 @@ func install(dir string) {
 		err = copyFile(self, installedExe(dir))
 	}
 	if err != nil {
-		messageBox("Couldn't install lømsland companion: "+err.Error(), mbIconWarning)
+		messageBox("Couldn't install Champ Select Companion: "+err.Error(), mbIconWarning)
 		return
 	}
 	_ = setAutostart(true, installedExe(dir))
@@ -56,7 +56,7 @@ func install(dir string) {
 		messageBox("Installed, but couldn't start it: "+err.Error(), mbIconWarning)
 		return
 	}
-	messageBox("lømsland companion is installed.\n\nIt lives in the tray next to the clock (you may need to click ^ to see it) and starts with Windows. "+
+	messageBox("Champ Select Companion is installed.\n\nIt lives in the tray next to the clock (you may need to click ^ to see it) and starts with Windows. "+
 		"When you're in champ select, a panel appears beside the League client with rune pages and summoner spells. Nothing changes in your client until you click Apply.\n\n"+
 		"You can delete the file you just downloaded.", mbIconInfo)
 }
@@ -89,9 +89,27 @@ func relaunch(args ...string) {
 	}
 }
 
+// migrateOld moves settings and remembered picks over from an early test build (installed as
+// "lomsland-companion") and stops that build from starting with Windows.
+func migrateOld(dir string) {
+	old := filepath.Join(filepath.Dir(dir), "lomsland-companion")
+	if st, err := os.Stat(old); err != nil || !st.IsDir() {
+		return
+	}
+	for _, f := range []string{"settings.json", "picks.json"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); os.IsNotExist(err) {
+			if b, err := os.ReadFile(filepath.Join(old, f)); err == nil {
+				_ = os.WriteFile(filepath.Join(dir, f), b, 0o644)
+			}
+		}
+	}
+	removeOldAutostart()
+	log.Printf("moved settings over from the early test build in %s", old)
+}
+
 func cleanupOld(dir string) {
-	_ = os.Remove(filepath.Join(dir, "lomsland-companion.old.exe"))
-	_ = os.Remove(filepath.Join(dir, "lomsland-companion.new.exe"))
+	_ = os.Remove(filepath.Join(dir, "champ-select-companion.old.exe"))
+	_ = os.Remove(filepath.Join(dir, "champ-select-companion.new.exe"))
 }
 
 // ---- updates from GitHub releases ----
@@ -143,7 +161,7 @@ func (a *App) checkUpdate(manual bool) {
 		return // try again later, never mid-game
 	}
 	req, _ := http.NewRequest("GET", latestAPI, nil)
-	req.Header.Set("User-Agent", "lomsland-companion/"+version)
+	req.Header.Set("User-Agent", "champ-select-companion/"+version)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	res, err := a.web.Do(req)
 	if err != nil {
@@ -162,7 +180,7 @@ func (a *App) checkUpdate(manual bool) {
 		return
 	}
 	if updateKey == "" {
-		say("Version " + rel.Tag + " is out. This copy has no update key, so download it from github.com/freakyfish42/lomsland-companion/releases.")
+		say("Version " + rel.Tag + " is out. This copy has no update key, so download it from github.com/freakyfish42/champ-select-companion/releases.")
 		return
 	}
 	var exeURL, sigURL string
@@ -197,7 +215,7 @@ func (a *App) checkUpdate(manual bool) {
 		return // a game started while downloading
 	}
 	exe := installedExe(a.dir)
-	newPath, oldPath := filepath.Join(a.dir, "lomsland-companion.new.exe"), filepath.Join(a.dir, "lomsland-companion.old.exe")
+	newPath, oldPath := filepath.Join(a.dir, "champ-select-companion.new.exe"), filepath.Join(a.dir, "champ-select-companion.old.exe")
 	if err := os.WriteFile(newPath, bin, 0o755); err != nil {
 		say("Couldn't save " + rel.Tag + ": " + err.Error())
 		return
@@ -224,7 +242,7 @@ func (a *App) checkUpdate(manual bool) {
 
 func (a *App) download(u string, max int64) ([]byte, error) {
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "lomsland-companion/"+version)
+	req.Header.Set("User-Agent", "champ-select-companion/"+version)
 	hc := &http.Client{Timeout: 2 * time.Minute}
 	res, err := hc.Do(req)
 	if err != nil {

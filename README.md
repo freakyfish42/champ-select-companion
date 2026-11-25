@@ -1,4 +1,4 @@
-# lømsland companion
+# Champ Select Companion
 
 A small Windows tray app for League of Legends. In champ select it shows a slim panel beside the League client with
 [build.lømsland.no](https://build.lømsland.no)'s two most played rune pages and summoner spell pairs for your champion
@@ -25,14 +25,14 @@ and role (EUW, Emerald+). Click **Apply** and it sets them in the client. Nothin
 
 ## Install
 
-Download `lomsland-companion.exe` from the latest release and run it. Windows SmartScreen will warn because the app
-isn't code-signed: click **More info → Run anyway**. It copies itself to `%LOCALAPPDATA%\lomsland-companion` and
+Download `champ-select-companion.exe` from the latest release and run it. Windows SmartScreen will warn because the app
+isn't code-signed: click **More info → Run anyway**. It copies itself to `%LOCALAPPDATA%\champ-select-companion` and
 starts from there; you can delete the download.
 
 Tray menu: show the panel again, turn the panel off, **test mode** (Apply only says what it would change), start with
 Windows, open the site, open the log folder, check for updates, quit.
 
-To remove it: untick *Start with Windows*, quit, and delete `%LOCALAPPDATA%\lomsland-companion`.
+To remove it: untick *Start with Windows*, quit, and delete `%LOCALAPPDATA%\champ-select-companion`.
 
 ## How it works
 
@@ -57,7 +57,7 @@ won't build if any test fails.
 
 ```sh
 go test ./core        # logic, against a fake League client
-./build.sh v1.0.1     # dist/lomsland-companion.exe + .sha256 (needs Go 1.22+ and llvm-windres)
+./build.sh v1.0.1     # dist/champ-select-companion.exe + .sha256 (needs Go 1.22+ and llvm-windres)
 ```
 
 Dependencies are vendored as source in `third_party/` (see `go.mod`'s replace lines).
@@ -65,14 +65,14 @@ Dependencies are vendored as source in `third_party/` (see `go.mod`'s replace li
 ## Release (signed)
 
 Updates are signed with an Ed25519 key that only exists on the owner's PC. The app has the public key built in
-(`updatekey.go`) and installs an update only when `lomsland-companion.exe.sig` verifies for exactly that version tag,
+(`updatekey.go`) and installs an update only when `champ-select-companion.exe.sig` verifies for exactly that version tag,
 so neither a taken-over GitHub account nor an old release passed off as new can push code to the team.
 
 1. `./build.sh vX.Y.Z`
-2. Drag `dist/lomsland-companion.exe` onto `lomsland-sign.exe` on the owner's PC. It writes `lomsland-companion.exe.sig`.
+2. Drag `dist/champ-select-companion.exe` onto `companion-sign.exe` on the owner's PC. It writes `champ-select-companion.exe.sig`.
 3. Create a GitHub release with tag `vX.Y.Z` and attach both files.
 
-The first time, double-click `lomsland-sign.exe` to create the key (`%APPDATA%\lomsland-sign\signing.key`) and see its
+The first time, double-click `companion-sign.exe` to create the key (`%APPDATA%\companion-sign\signing.key`; a key made under the old name `lomsland-sign` is still used) and see its
 public part. Back the key file up: without it no further updates can be signed.
 
 ## Security notes

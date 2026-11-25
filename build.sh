@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds dist/lomsland-companion.exe and dist/lomsland-sign.exe (Windows x64) from Linux or Windows with Go 1.22+.
+# Builds dist/champ-select-companion.exe and dist/companion-sign.exe (Windows x64) from Linux or Windows with Go 1.22+.
 # Usage: ./build.sh v1.0.0      Needs llvm-windres (or x86_64-w64-mingw32-windres) for the icon and manifest.
 set -e
 V=${1:-dev}
@@ -19,12 +19,11 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "CompanyName", "build.lomsland.no"
-      VALUE "FileDescription", "lomsland companion"
+      VALUE "FileDescription", "Champ Select Companion"
       VALUE "FileVersion", "$N"
-      VALUE "ProductName", "lomsland companion"
+      VALUE "ProductName", "Champ Select Companion"
       VALUE "ProductVersion", "$N"
-      VALUE "OriginalFilename", "lomsland-companion.exe"
+      VALUE "OriginalFilename", "champ-select-companion.exe"
     END
   END
   BLOCK "VarFileInfo"
@@ -37,7 +36,7 @@ WR=$(command -v llvm-windres || command -v x86_64-w64-mingw32-windres || ls /usr
 $WR --target=pe-x86-64 -i app.rc -o rsrc_windows_amd64.syso 2>/dev/null || $WR -i app.rc -o rsrc_windows_amd64.syso
 rm -f app.rc
 mkdir -p dist
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$V -X main.versionMarker=LMVER:$V:LMVER" -o dist/lomsland-companion.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$V -X main.versionMarker=LMVER:$V:LMVER" -o dist/champ-select-companion.exe .
 rm -f dist/*.sha256
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui" -o dist/lomsland-sign.exe ./cmd/lomsland-sign
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui" -o dist/companion-sign.exe ./cmd/companion-sign
 ls -la dist

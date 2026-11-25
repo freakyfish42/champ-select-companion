@@ -182,6 +182,36 @@ func TestVisionNoAppNameInThePanel(t *testing.T) {
 	}
 }
 
+// Vision 3c: the app has a neutral name: no "lømsland" in anything a player sees (tray, messages,
+// window titles, errors, file and folder names). The build site's own address is allowed.
+func TestVisionNeutralName(t *testing.T) {
+	files, _ := filepath.Glob("../*.go")
+	more, _ := filepath.Glob("*.go")
+	cmd, _ := filepath.Glob("../cmd/*/*.go")
+	files = append(append(files, more...), cmd...)
+	files = append(files, "../build.sh", "../app.manifest")
+	str := regexp.MustCompile("\"(?:[^\"\\\\\n]|\\\\.)*\"|`[^`]*`")
+	name := regexp.MustCompile(`(?i)l[øo]msland`)
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, _ := os.ReadFile(f)
+		for _, lit := range str.FindAllString(string(src), -1) {
+			if !name.MatchString(lit) {
+				continue
+			}
+			cleaned := strings.NewReplacer("xn--lmsland", "", `"lomsland-sign"`, "", `"lomsland-companion"`, "").Replace(lit)
+			if strings.Contains(f, "apply.go") && lit == `"lømsland"` { // LegacyPrefix: recognising old pages
+				continue
+			}
+			if name.MatchString(cleaned) {
+				t.Errorf("%s shows the old name: %s", f, lit)
+			}
+		}
+	}
+}
+
 // Vision 4: your own rune pages are never changed unless you pick one to replace.
 func TestVisionYourRunePagesAreSafe(t *testing.T) {
 	rc, c, done := newRecorder(t)

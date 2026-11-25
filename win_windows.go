@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/freakyfish42/lomsland-companion/core"
+	"github.com/freakyfish42/champ-select-companion/core"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -69,7 +69,7 @@ func setDPIAware() {
 
 func messageBox(text string, icon uint32) {
 	t, _ := windows.UTF16PtrFromString(text)
-	c, _ := windows.UTF16PtrFromString("lømsland companion")
+	c, _ := windows.UTF16PtrFromString("Champ Select Companion")
 	pMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), uintptr(icon|mbTopmost))
 }
 
@@ -200,7 +200,15 @@ func startDrag(h uintptr) {
 // ---- start with Windows ----
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
-const runName = "lomsland-companion"
+const runName = "champ-select-companion"
+
+// removeOldAutostart deletes the early test build's start-with-Windows entry.
+func removeOldAutostart() {
+	if k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE); err == nil {
+		_ = k.DeleteValue("lomsland-companion")
+		k.Close()
+	}
+}
 
 func autostartEnabled() bool {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
@@ -230,7 +238,7 @@ func setAutostart(on bool, exe string) error {
 // ---- one copy at a time ----
 
 func singleInstance() (windows.Handle, bool) {
-	name, _ := windows.UTF16PtrFromString(`Local\lomsland-companion`)
+	name, _ := windows.UTF16PtrFromString(`Local\champ-select-companion`)
 	h, err := windows.CreateMutex(nil, true, name)
 	if err == windows.ERROR_ALREADY_EXISTS {
 		if h != 0 {

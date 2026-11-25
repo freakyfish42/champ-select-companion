@@ -41,7 +41,7 @@ type TierList struct {
 
 func FetchTierList(hc *http.Client, base string) (*TierList, error) {
 	req, _ := http.NewRequest("GET", base+"/api/tierlist", nil)
-	req.Header.Set("User-Agent", "lomsland-companion")
+	req.Header.Set("User-Agent", "champ-select-companion")
 	res, err := hc.Do(req)
 	if err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func clashPost(hc *http.Client, base string, body, out any) error {
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", base+"/api/store", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "lomsland-companion")
+	req.Header.Set("User-Agent", "champ-select-companion")
 	res, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("couldn't reach the Clash helper: %w", err)

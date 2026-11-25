@@ -62,10 +62,10 @@ func FetchBuild(hc *http.Client, base, champ, role string) (*Build, error) {
 		u += "&p=" + url.QueryEscape(role)
 	}
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "lomsland-companion")
+	req.Header.Set("User-Agent", "champ-select-companion")
 	res, err := hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't reach build.lømsland.no: %w", err)
+		return nil, fmt.Errorf("couldn't reach the build site: %w", err)
 	}
 	defer res.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
@@ -76,13 +76,13 @@ func FetchBuild(hc *http.Client, base, champ, role string) (*Build, error) {
 		var e struct{ Error string }
 		_ = json.Unmarshal(b, &e)
 		if e.Error == "" {
-			e.Error = fmt.Sprintf("build.lømsland.no answered %d", res.StatusCode)
+			e.Error = fmt.Sprintf("the build site answered %d", res.StatusCode)
 		}
 		return nil, fmt.Errorf("%s", e.Error)
 	}
 	var bd Build
 	if err := json.Unmarshal(b, &bd); err != nil {
-		return nil, fmt.Errorf("unexpected answer from build.lømsland.no: %w", err)
+		return nil, fmt.Errorf("unexpected answer from the build site: %w", err)
 	}
 	bd.Raw = b
 	return &bd, nil

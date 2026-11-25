@@ -5,7 +5,7 @@ import (
 	"runtime"
 
 	"fyne.io/systray"
-	"github.com/freakyfish42/lomsland-companion/core"
+	"github.com/freakyfish42/champ-select-companion/core"
 )
 
 // runTray runs the tray icon and its menu on a thread of its own (the panel owns the main thread).
@@ -16,8 +16,8 @@ func runTray(a *App) {
 
 func trayReady(a *App) {
 	systray.SetIcon(iconICO)
-	systray.SetTooltip("lømsland companion")
-	title := systray.AddMenuItem("lømsland companion "+version, "")
+	systray.SetTooltip("Champ Select Companion")
+	title := systray.AddMenuItem("Champ Select Companion "+version, "")
 	title.Disable()
 	status := systray.AddMenuItem("Waiting for League", "")
 	status.Disable()
@@ -35,7 +35,7 @@ func trayReady(a *App) {
 	testMode := systray.AddMenuItemCheckbox("Test mode (Apply only describes)", "Apply buttons say what they would change, and change nothing", cfg.TestMode)
 	autostart := systray.AddMenuItemCheckbox("Start with Windows", "", autostartEnabled())
 	systray.AddSeparator()
-	site := systray.AddMenuItem("Open build.lømsland.no", "")
+	site := systray.AddMenuItem("Open the build site", "")
 	logs := systray.AddMenuItem("Open log folder", "")
 	update := systray.AddMenuItem("Check for updates", "")
 	systray.AddSeparator()

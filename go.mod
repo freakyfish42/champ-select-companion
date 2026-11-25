@@ -1,4 +1,4 @@
-module github.com/freakyfish42/lomsland-companion
+module github.com/freakyfish42/champ-select-companion
 
 go 1.22
 
