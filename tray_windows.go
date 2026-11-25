@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 
@@ -34,6 +35,21 @@ func trayReady(a *App) {
 	showPanel := systray.AddMenuItemCheckbox("Show panel in champ select", "", cfg.ShowPanel)
 	showCard := systray.AddMenuItemCheckbox("Show build card in game", "Your build and skill order over the game (League in Borderless or Windowed). "+cardHotkey+" hides it", !cfg.HideCard)
 	moveCard := systray.AddMenuItem("Move the in-game card", "While a game runs: drag the card where you want it, then click Done")
+	alphaMenu := systray.AddMenuItem("In-game card opacity", "How much of the game shows through the card")
+	alphas := map[int]*systray.MenuItem{}
+	for _, pct := range []int{100, 80, 60} {
+		alphas[pct] = alphaMenu.AddSubMenuItemCheckbox(fmt.Sprintf("%d %%", pct), "", cfg.cardAlpha() == pct)
+	}
+	pickAlpha := func(pct int) {
+		for p, m := range alphas {
+			if p == pct {
+				m.Check()
+			} else {
+				m.Uncheck()
+			}
+		}
+		a.setCardAlpha(pct)
+	}
 	testMode := systray.AddMenuItemCheckbox("Test mode (Apply only describes)", "Apply buttons say what they would change, and change nothing", cfg.TestMode)
 	autostart := systray.AddMenuItemCheckbox("Start with Windows", "", autostartEnabled())
 	systray.AddSeparator()
@@ -63,6 +79,12 @@ func trayReady(a *App) {
 			a.setShowCard(toggle(showCard))
 		case <-moveCard.ClickedCh:
 			go a.setMoving(true)
+		case <-alphas[100].ClickedCh:
+			pickAlpha(100)
+		case <-alphas[80].ClickedCh:
+			pickAlpha(80)
+		case <-alphas[60].ClickedCh:
+			pickAlpha(60)
 		case <-testMode.ClickedCh:
 			a.setTestMode(toggle(testMode))
 		case <-autostart.ClickedCh:

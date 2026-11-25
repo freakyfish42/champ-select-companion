@@ -19,6 +19,12 @@ import (
 var (
 	user32                 = windows.NewLazySystemDLL("user32.dll")
 	dwmapi                 = windows.NewLazySystemDLL("dwmapi.dll")
+	gdi32                  = windows.NewLazySystemDLL("gdi32.dll")
+	pDwmBlurBehind         = dwmapi.NewProc("DwmEnableBlurBehindWindow")
+	pCreateRectRgn         = gdi32.NewProc("CreateRectRgn")
+	pDeleteObject          = gdi32.NewProc("DeleteObject")
+	pGetStockObject        = gdi32.NewProc("GetStockObject")
+	pSetClassLongPtrW      = user32.NewProc("SetClassLongPtrW")
 	pFindWindowW           = user32.NewProc("FindWindowW")
 	pGetWindowRect         = user32.NewProc("GetWindowRect")
 	pIsIconic              = user32.NewProc("IsIconic")
@@ -248,6 +254,12 @@ func makePanel(h uintptr) {
 	pSetWindowLongPtrW.Call(h, gwlStyle, wsPopup|wsClipChildren)
 	pSetWindowLongPtrW.Call(h, gwlExStyle, wsExToolWindow)
 	pSetWindowPos.Call(h, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpFrameChanged)
+	// the window's own background is black: with see-through on (below), black counts as transparent, so only
+	// what the page draws shows. The panel's page is opaque, so this changes nothing there.
+	if pGetStockObject.Find() == nil && pSetClassLongPtrW.Find() == nil {
+		black, _, _ := pGetStockObject.Call(4)        // BLACK_BRUSH
+		pSetClassLongPtrW.Call(h, ^uintptr(9), black) // GCLP_HBRBACKGROUND (-10)
+	}
 	if pDwmSetWindowAttribute.Find() == nil {
 		round := uint32(2) // DWMWCP_ROUND (Windows 11)
 		pDwmSetWindowAttribute.Call(h, 33, uintptr(unsafe.Pointer(&round)), 4)
@@ -266,7 +278,11 @@ func hideWindow(h uintptr) { pShowWindow.Call(h, swHide) }
 
 // setCardStyle switches the window between the champ select panel and the in-game card. The card never
 // takes focus, is slightly see-through and, unless it's being moved, lets every click through to the game.
-func setCardStyle(h uintptr, card, clickThrough bool) {
+//
+// seeThrough lets the game show through the card: the page's background is drawn half-transparent (the web
+// view's own background is transparent, see uiLoop) and Windows blends the window per pixel (blur-behind with
+// an empty region: no blur, just alpha). Off = solid, as in v1.0.1/v1.0.2.
+func setCardStyle(h uintptr, card, clickThrough, seeThrough bool) {
 	ex := uintptr(wsExToolWindow)
 	if card {
 		ex |= wsExLayered | wsExNoActivate
@@ -276,9 +292,30 @@ func setCardStyle(h uintptr, card, clickThrough bool) {
 	}
 	pSetWindowLongPtrW.Call(h, gwlExStyle, ex)
 	if card {
-		pSetLayeredAttrs.Call(h, 0, 232, lwaAlpha)
+		pSetLayeredAttrs.Call(h, 0, 255, lwaAlpha)
 	}
+	perPixelAlpha(h, card && seeThrough)
 	pSetWindowPos.Call(h, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpFrameChanged)
+}
+
+func perPixelAlpha(h uintptr, on bool) {
+	if pDwmBlurBehind.Find() != nil || pCreateRectRgn.Find() != nil {
+		return
+	}
+	var bb struct {
+		Flags      uint32
+		Enable     int32
+		Region     uintptr
+		Transition int32
+	}
+	bb.Flags = 0x1 // DWM_BB_ENABLE
+	if on {
+		bb.Enable = 1
+		rgn, _, _ := pCreateRectRgn.Call(0, 0, ^uintptr(0), ^uintptr(0)) // empty: blend, don't blur
+		defer pDeleteObject.Call(rgn)
+		bb.Region, bb.Flags = rgn, 0x1|0x2 // | DWM_BB_BLURREGION
+	}
+	pDwmBlurBehind.Call(h, uintptr(unsafe.Pointer(&bb)))
 }
 
 // cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default

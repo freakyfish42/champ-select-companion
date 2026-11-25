@@ -62,6 +62,16 @@ type Config struct {
 	HideCard  bool  `json:"hideCard,omitempty"` // the tray's "Show build card in game" is off
 	CardDX    int32 `json:"cardDX,omitempty"`   // where the player moved the card: offset from the game's top-left
 	CardDY    int32 `json:"cardDY,omitempty"`
+	CardAlpha int   `json:"cardAlpha,omitempty"` // the card's opacity in percent: 100, 80 or 60 (0 = default 80)
+}
+
+// cardAlpha: the card's opacity setting (default 80 %).
+func (c Config) cardAlpha() int {
+	switch c.CardAlpha {
+	case 100, 80, 60:
+		return c.CardAlpha
+	}
+	return 80
 }
 
 type App struct {
@@ -452,6 +462,14 @@ func (a *App) setMoving(on bool) {
 	go a.forcePush()
 }
 
+func (a *App) setCardAlpha(pct int) {
+	a.mu.Lock()
+	a.cfg.CardAlpha = pct
+	a.mu.Unlock()
+	a.saveConfig()
+	go a.forcePush()
+}
+
 func (a *App) setShowCard(on bool) {
 	a.mu.Lock()
 	a.cfg.HideCard = !on
@@ -688,6 +706,7 @@ type view struct {
 	Level   int             `json:"level,omitempty"`  // in game: your level
 	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
 	Hotkey  string          `json:"hotkey,omitempty"`
+	Alpha   int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
 }
 
 func (a *App) roleOf() string {
@@ -706,7 +725,7 @@ func (a *App) view() view {
 			return view{State: "ingame-none", Version: version}
 		}
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
-			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey}
+			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha()}
 	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
@@ -903,6 +922,9 @@ func (a *App) uiLoop() {
 		openURL("https://developer.microsoft.com/microsoft-edge/webview2/")
 		select {}
 	}
+	// the web view's own background is transparent, so the in-game card can be see-through; every page in it
+	// paints its own background (the panel's is opaque), so nothing else changes
+	_ = os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "0")
 	w := webview.NewWithOptions(webview.WebViewOptions{
 		DataPath:      filepath.Join(a.dir, "webview"),
 		WindowOptions: webview.WindowOptions{Title: "Champ select", Width: panelW, Height: panelH},
@@ -947,20 +969,21 @@ func (a *App) uiLoop() {
 // follow keeps the panel beside the client while champ select is on and the client (or the panel) is in front.
 func (a *App) follow(h uintptr) {
 	var last, seen, lastCard rect
-	shown, styled, styledMoving := false, false, false
+	shown, styled, styledMoving, styledSee := false, false, false, false
 	for {
 		// ---- in game: the build card over the game ----
 		a.mu.Lock()
 		card := a.inGame && a.cardReady() && !a.cardHidden
 		moving := a.moving
+		see := a.cfg.cardAlpha() < 100
 		dx, dy := a.cfg.CardDX, a.cfg.CardDY
 		a.mu.Unlock()
 		if card {
 			g, fg := gameWindow(), foreground()
 			if g != 0 && !isIconic(g) && isVisible(g) && (fg == g || fg == h) {
-				if !styled || styledMoving != moving {
-					setCardStyle(h, true, !moving)
-					styled, styledMoving = true, moving
+				if !styled || styledMoving != moving || styledSee != see {
+					setCardStyle(h, true, !moving, see)
+					styled, styledMoving, styledSee = true, moving, see
 				}
 				if gr, ok := windowRect(g); ok {
 					r := cardRect(gr, dpiScale(g), dx, dy, moving)
@@ -988,7 +1011,7 @@ func (a *App) follow(h uintptr) {
 		}
 		if styled { // back from the card: the normal panel again
 			hideWindow(h)
-			setCardStyle(h, false, false)
+			setCardStyle(h, false, false, false)
 			styled, shown, lastCard, last = false, false, rect{}, rect{}
 		}
 		if pr, ok := windowRect(h); ok && shown && pr != seen {
