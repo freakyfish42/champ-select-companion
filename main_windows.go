@@ -101,6 +101,7 @@ type App struct {
 	cardHidden bool          // hidden with the hotkey, for this game
 	moving     bool          // the player is moving the card (it takes clicks while moving)
 	cardH      int32         // the card's height as the page measured it (CSS px)
+	cardDPR    float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
 	gate       core.CardGate // does this game get the card? Only one entered straight from your own champ select
 	cardArmed  bool
 	timer      core.Timer // champ select's clock, read at timerAt
@@ -978,12 +979,15 @@ func (a *App) uiLoop() {
 	_ = w.Bind("clashRefresh", func() { go a.refreshClash() })
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	_ = w.Bind("cardDone", func() { go a.setMoving(false) })
-	_ = w.Bind("cardHeight", func(px int) {
+	_ = w.Bind("cardHeight", func(px int, dpr float64) {
 		if px < 40 || px > 800 {
 			return
 		}
 		a.mu.Lock()
 		a.cardH = int32(px)
+		if dpr >= 0.5 && dpr <= 5 {
+			a.cardDPR = dpr
+		}
 		a.mu.Unlock()
 	})
 	w.SetHtml(panelPage())
@@ -1009,7 +1013,7 @@ func (a *App) follow(h uintptr) {
 		card := a.inGame && a.cardReady() && !a.cardHidden
 		moving := a.moving
 		see := a.cfg.cardAlpha() < 100
-		dx, dy, ch, size := a.cfg.CardDX, a.cfg.CardDY, a.cardH, a.cfg.cardSize()
+		dx, dy, ch, size, dpr := a.cfg.CardDX, a.cfg.CardDY, a.cardH, a.cfg.cardSize(), a.cardDPR
 		a.mu.Unlock()
 		if card {
 			g, fg := gameWindow(), foreground()
@@ -1019,8 +1023,14 @@ func (a *App) follow(h uintptr) {
 					setCardStyle(h, true, !moving, see)
 					styled, styledMoving, styledSee = true, moving, see
 				}
+				// the card's own pixel scale, as the page reports it: not the game's (League says 100 % even when
+				// Windows is at 125 %, which made the card too small and the hover land off by that factor)
+				sc := dpr
+				if sc <= 0 {
+					sc = dpiScale(h)
+				}
 				if gr, ok := windowRect(g); ok {
-					r := cardRect(gr, dpiScale(g), dx, dy, ch, size)
+					r := cardRect(gr, sc, dx, dy, ch, size)
 					switch {
 					case !moving && (r != lastCard || !shown):
 						placeTopmost(h, r, true)
@@ -1040,8 +1050,7 @@ func (a *App) follow(h uintptr) {
 					at := [2]int32{-1, -1}
 					if x, y, ok := cursorPos(); ok && !moving {
 						if cr, ok := windowRect(h); ok && x >= cr.Left && x < cr.Right && y >= cr.Top && y < cr.Bottom {
-							sc := dpiScale(g)
-							at = [2]int32{int32(float64(x-cr.Left) / sc), int32(float64(y-cr.Top) / sc)}
+							at = core.CardPointer(cr.Left, cr.Top, x, y, sc)
 						}
 					}
 					if at != hoverAt {

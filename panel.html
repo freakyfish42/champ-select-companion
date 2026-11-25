@@ -217,7 +217,7 @@ function render(v){
     m.style.zoom=String((v.size||125)/100); /* the tray's card size; the window follows the measured height */
     /* tell the app how tall the card is, and again whenever that changes (fonts and icons settle a moment
        later, and differ a little per PC), so the window always fits it */
-    const tell=()=>{const h=Math.ceil(m.getBoundingClientRect().height)+2;window.cardHeight&&cardHeight(h)};
+    const tell=()=>{const h=Math.ceil(m.getBoundingClientRect().height)+2;window.cardHeight&&cardHeight(h,window.devicePixelRatio||1)};
     requestAnimationFrame(tell);if(document.fonts)document.fonts.ready.then(tell);
     if(hv[0]>=0)window.hover(hv[0],hv[1]); /* keep showing the name after a redraw (level up) */
     if(!cardRO&&window.ResizeObserver){cardRO=new ResizeObserver(()=>{if(document.body.classList.contains('ig'))tell()});cardRO.observe(m)}

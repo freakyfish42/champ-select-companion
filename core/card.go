@@ -58,3 +58,12 @@ func CardRect(game Rect, scale float64, dx, dy, cssH int32, size int) Rect {
 	}
 	return Rect{Left: l, Top: t, Right: l + w, Bottom: t + h}
 }
+
+// CardPointer turns the mouse pointer's screen position into the card page's own coordinates (CSS px), using
+// the page's pixel scale: the same scale the card's window is sized with, so hover and drawing always agree.
+func CardPointer(left, top, x, y int32, dpr float64) [2]int32 {
+	if dpr <= 0 {
+		dpr = 1
+	}
+	return [2]int32{int32(float64(x-left) / dpr), int32(float64(y-top) / dpr)}
+}

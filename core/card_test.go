@@ -58,3 +58,20 @@ func TestCardRect(t *testing.T) {
 		t.Fatal("before the page measured itself", r)
 	}
 }
+
+// the pointer and the window size use the same scale: the page's own (League reports 100 % even when Windows
+// is at 125 %; using the game's scale cut the card off and put the hover up and to the left)
+func TestCardPointer(t *testing.T) {
+	// card at (100,200) on screen, Windows at 125 %: a pointer 50,25 physical px in is 40,20 page px
+	if p := CardPointer(100, 200, 150, 225, 1.25); p != [2]int32{40, 20} {
+		t.Fatal(p)
+	}
+	if p := CardPointer(0, 0, 30, 30, 0); p != [2]int32{30, 30} {
+		t.Fatal("unknown scale falls back to 1", p)
+	}
+	// sized and hit-tested with one scale: the far corner of the window maps to the far corner of the page
+	r := CardRect(Rect{0, 0, 1920, 1080}, 1.25, 0, 0, 110, 125)
+	if p := CardPointer(r.Left, r.Top, r.Right-1, r.Bottom-1, 1.25); p[0] < 374 || p[1] < 110 {
+		t.Fatal("window smaller than the page", r, p)
+	}
+}
