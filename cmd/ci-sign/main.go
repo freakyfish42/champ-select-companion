@@ -32,9 +32,22 @@ func main() {
 	if len(os.Args) > 3 && os.Args[3] != "" && !core.Newer(os.Args[3], want) {
 		fail("%s isn't newer than the latest release %s", want, os.Args[3])
 	}
-	seed, err := base64.StdEncoding.DecodeString(strings.TrimSpace(os.Getenv("SIGNING_KEY")))
+	raw := strings.TrimSpace(os.Getenv("SIGNING_KEY"))
+	src, _ := os.ReadFile("updatekey.go")
+	m := regexp.MustCompile(`updateKey = "([^"]+)"`).FindSubmatch(src)
+	if m == nil {
+		fail("no update key in updatekey.go")
+	}
+	pub := string(m[1])
+	switch {
+	case raw == "":
+		fail("the SIGNING_KEY secret is empty or missing (repo Settings → Secrets and variables → Actions)")
+	case strings.Contains(raw, pub):
+		fail("SIGNING_KEY holds the PUBLIC key (%s…), the one companion-sign.exe shows. It must be the line in %%APPDATA%%\\companion-sign\\signing.key", pub[:6])
+	}
+	seed, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil || len(seed) != ed25519.SeedSize {
-		fail("the SIGNING_KEY secret is missing or isn't the one-line key from signing.key")
+		fail("SIGNING_KEY isn't one key line (got %d characters, expected 44, ending in =): paste only the line from signing.key", len(raw))
 	}
 	bin, err := os.ReadFile(exe)
 	if err != nil {
@@ -47,12 +60,7 @@ func main() {
 	if tag != want {
 		fail("the exe says it is %s, not %s", tag, want)
 	}
-	src, _ := os.ReadFile("updatekey.go")
-	m := regexp.MustCompile(`updateKey = "([^"]+)"`).FindSubmatch(src)
-	if m == nil {
-		fail("no update key in updatekey.go")
-	}
-	if err := core.VerifyRelease(string(m[1]), tag, bin, sig); err != nil {
+	if err := core.VerifyRelease(pub, tag, bin, sig); err != nil {
 		fail("the SIGNING_KEY secret doesn't match the app's update key: %v", err)
 	}
 	if err := os.WriteFile(exe+".sig", sig, 0o644); err != nil {
