@@ -73,6 +73,14 @@ func messageBox(text string, icon uint32) {
 	pMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), uintptr(icon|mbTopmost))
 }
 
+// askYesNo shows a Yes/No message and reports whether Yes was picked.
+func askYesNo(text string, icon uint32) bool {
+	t, _ := windows.UTF16PtrFromString(text)
+	c, _ := windows.UTF16PtrFromString("Champ Select Companion")
+	r, _, _ := pMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), uintptr(icon|mbTopmost|0x4)) // MB_YESNO
+	return r == 6                                                                                                        // IDYES
+}
+
 func openURL(u string) {
 	_ = windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(u), nil, nil, 1)
 }

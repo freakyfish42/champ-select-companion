@@ -36,6 +36,7 @@ func trayReady(a *App) {
 	autostart := systray.AddMenuItemCheckbox("Start with Windows", "", autostartEnabled())
 	systray.AddSeparator()
 	site := systray.AddMenuItem("Open the build site", "")
+	check := systray.AddMenuItem("Check setup", "Tests the connection to League, the build site, the Clash helper, the panel and updates")
 	logs := systray.AddMenuItem("Open log folder", "")
 	update := systray.AddMenuItem("Check for updates", "")
 	systray.AddSeparator()
@@ -67,6 +68,8 @@ func trayReady(a *App) {
 			}
 		case <-site.ClickedCh:
 			openURL(core.SiteURL + "/")
+		case <-check.ClickedCh:
+			go a.checkSetup()
 		case <-logs.ClickedCh:
 			openURL(a.dir)
 		case <-update.ClickedCh:

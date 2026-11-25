@@ -6,7 +6,7 @@ Change a vision test only when the owner has asked for that behaviour to change.
 
 | # | Requirement | Test |
 |---|---|---|
-| 1 | Nothing changes in the League client unless the player clicks Apply; watching champ select and Clash scouting only read. | `TestVisionReadsNeverWrite` |
+| 1 | Nothing changes in the League client unless the player clicks Apply; watching champ select, Clash scouting and the setup check only read. | `TestVisionReadsNeverWrite`, `TestHealthAllGood` |
 | 2 | The only things ever written to the client are your rune page and your summoner spells. | `TestVisionOnlyRunesAndSpellsAreWritten` |
 | 3 | The name "lømsland" (or the app's name) never appears in the client: rune pages are named like "Ahri Mid". | `TestVisionNoAppNameInTheClient` |
 | 3b | The panel beside the client doesn't show the name either. | `TestVisionNoAppNameInThePanel` |

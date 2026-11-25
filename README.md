@@ -33,7 +33,11 @@ isn't code-signed: click **More info → Run anyway**. It copies itself to `%LOC
 starts from there; you can delete the download.
 
 Tray menu: show the panel again, turn the panel off, **test mode** (Apply only says what it would change), start with
-Windows, open the site, open the log folder, check for updates, quit.
+Windows, open the build site, **check setup**, open the log folder, check for updates, quit.
+
+**Check setup** tests, read-only: the League client (found and connected), the build site (reachable, how old the data
+is), the Clash helper, the panel (WebView2), updates (latest version, update key) and start with Windows. It shows ✓ / !
+/ ✗ per line and can open a full report (with the end of the log, without other players' Clash data) to copy and send.
 
 To remove it: untick *Start with Windows*, quit, and delete `%LOCALAPPDATA%\champ-select-companion`.
 

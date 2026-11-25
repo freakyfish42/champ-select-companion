@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/freakyfish42/champ-select-companion/core"
+	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
 )
 
@@ -253,4 +254,60 @@ func (a *App) download(u string, max int64) ([]byte, error) {
 		return nil, errorf("GitHub answered %s", res.Status)
 	}
 	return readAllLimit(res.Body, max)
+}
+
+// ---- the tray's "Check setup" ----
+
+var checking sync.Mutex
+
+func (a *App) checkSetup() {
+	if !checking.TryLock() {
+		return
+	}
+	defer checking.Unlock()
+	cs := core.Health(core.HealthDeps{
+		FindLeague: findLeague,
+		NewClient:  core.NewClient,
+		Web:        a.web,
+		SiteURL:    core.SiteURL,
+		ClashURL:   core.ClashURL,
+		LatestAPI:  latestAPI,
+		Version:    version,
+		HasKey:     updateKey != "",
+		WebView2:   webviewloader.GetInstalledVersion,
+		Autostart:  autostartEnabled,
+	})
+	log.Printf("setup check:\n%s", core.Summary(cs))
+	head := map[core.CheckState]string{core.CheckOK: "Everything looks fine.", core.CheckWarn: "Working, with a note or two.", core.CheckFail: "Something needs fixing."}[core.Worst(cs)]
+	icon := uint32(mbIconInfo)
+	if core.Worst(cs) == core.CheckFail {
+		icon = mbIconWarning
+	}
+	if !askYesNo(head+"\n\n"+core.Summary(cs)+"\nOpen the full report (with the end of the log) to copy and send it?", icon) {
+		return
+	}
+	p := filepath.Join(a.dir, "setup-report.txt")
+	if err := os.WriteFile(p, []byte(core.Report(cs, version, time.Now(), logTail(filepath.Join(a.dir, "log.txt"), 50))), 0o644); err != nil {
+		messageBox("Couldn't write the report: "+err.Error(), mbIconWarning)
+		return
+	}
+	openURL(p)
+}
+
+// logTail returns the last n lines of the log.
+func logTail(p string, n int) string {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return "(no log yet)"
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+		if !strings.Contains(l, "clash raw ") { // keep other players' Clash data out of the report
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

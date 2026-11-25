@@ -34,9 +34,11 @@ type TierEntry struct {
 }
 
 type TierList struct {
-	Roles map[string][]TierEntry `json:"roles"`
-	share map[string]map[string]float64
-	champ map[string]TierEntry
+	Roles   map[string][]TierEntry `json:"roles"`
+	OpggAt  int64                  `json:"opggAt"`  // when op.gg last processed its stats (ms)
+	Updated int64                  `json:"updated"` // when the site fetched them (ms)
+	share   map[string]map[string]float64
+	champ   map[string]TierEntry
 }
 
 func FetchTierList(hc *http.Client, base string) (*TierList, error) {
