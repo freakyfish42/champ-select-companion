@@ -28,7 +28,7 @@ var (
 	pGetForegroundWindow   = user32.NewProc("GetForegroundWindow")
 	pSetWindowLongPtrW     = user32.NewProc("SetWindowLongPtrW")
 	pReleaseCapture        = user32.NewProc("ReleaseCapture")
-	pSendMessageW          = user32.NewProc("SendMessageW")
+	pPostMessageW          = user32.NewProc("PostMessageW")
 	pMonitorFromWindow     = user32.NewProc("MonitorFromWindow")
 	pGetMonitorInfoW       = user32.NewProc("GetMonitorInfoW")
 	pGetDpiForWindow       = user32.NewProc("GetDpiForWindow")
@@ -194,7 +194,7 @@ func hideWindow(h uintptr) { pShowWindow.Call(h, swHide) }
 // startDrag lets the player move the frameless panel by its header.
 func startDrag(h uintptr) {
 	pReleaseCapture.Call()
-	pSendMessageW.Call(h, wmNCLButtonDown, htCaption, 0)
+	pPostMessageW.Call(h, wmNCLButtonDown, htCaption, 0) // posted, not sent: we're inside a WebView2 callback
 }
 
 // ---- start with Windows ----

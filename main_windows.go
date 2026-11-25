@@ -456,12 +456,7 @@ func (a *App) uiLoop() {
 	_ = w.Bind("ready", func() { go a.forcePush() })
 	_ = w.Bind("applyRunes", func(i, replaceID int) core.Result { return a.applyRunes(i, replaceID) })
 	_ = w.Bind("applySpells", func(i int) core.Result { return a.applySpells(i) })
-	_ = w.Bind("drag", func() {
-		a.mu.Lock()
-		a.dragged = true
-		a.mu.Unlock()
-		startDrag(h)
-	})
+	_ = w.Bind("drag", func() { startDrag(h) })
 	_ = w.Bind("hidePanel", func() {
 		a.mu.Lock()
 		a.hidden = true
@@ -491,6 +486,14 @@ func (a *App) follow(h uintptr) {
 		want := a.inSelect && a.cfg.ShowPanel && !a.hidden && core.SupportedMode(a.mode) // no panel in ARAM, Arena, ...
 		dragged := a.dragged
 		a.mu.Unlock()
+		// the player moved the panel: leave it where they put it for the rest of this champ select
+		if shown && !dragged && last != (rect{}) {
+			if pr, ok := windowRect(h); ok && pr != last {
+				a.mu.Lock()
+				a.dragged, dragged = true, true
+				a.mu.Unlock()
+			}
+		}
 		c := clientWindow()
 		fg := foreground()
 		if want && c != 0 && !isIconic(c) && isVisible(c) && (fg == c || fg == h) {
