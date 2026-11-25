@@ -58,6 +58,9 @@ button.ap:disabled{opacity:.6;cursor:default}
 .rl{font-size:10.5px;color:var(--gold);border:1px solid var(--line);border-radius:5px;padding:0 5px;white-space:nowrap}
 .cc{display:flex;flex-wrap:wrap;gap:3px 10px}.cc span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;white-space:nowrap}.cc img{width:20px;height:20px;border-radius:4px}.cc small{color:var(--mute)}
 .bans{display:flex;flex-direction:column;gap:4px}.bans div{display:flex;align-items:center;gap:6px;font-size:12px}.bans img{width:24px;height:24px;border-radius:5px;border:1px solid #6e3434}.bans small{color:var(--mute)}
+.ci{margin:8px 0 2px;padding:6px 9px;border:1px dashed rgba(200,170,110,.45);border-radius:10px}
+.ci h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}
+.ci div{display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0}.ci img{width:22px;height:22px;border-radius:5px}.ci span{flex:1}.ci small{color:var(--mute)}
 .test{background:#4a3a12;color:#ffd68a;font-size:11.5px;padding:5px 12px;text-align:center}
 </style>
 </head>
@@ -98,7 +101,7 @@ function head(v){
   else sub='Champ select';
   $('csub').textContent=sub;
   $('test').hidden=!v.test;
-  $('ver').textContent='EUW · Emerald+ · '+(v.version||'');
+  $('ver').textContent='EUW · Emerald+';$('ver').title='App '+(v.version||'');
 }
 
 function runeCard(b,i,v){
@@ -136,6 +139,14 @@ function matchup(m){
   const verdict=m.state!=='ok'?'':m.wr>=.52?'Favoured':m.wr<.48?'Hard matchup':'Even';
   return `<div class="mu">${ic}<div class="t">vs <b>${esc(m.opp)}</b>${m.sure?'':' <span class="tag">likely</span>'}<small>${verdict?esc(verdict)+' · ':''}your win rate in lane</small></div>${v}</div>`}
 
+function counters(v){
+  const c=v.counters||[];if(!c.length||v.locked)return '';
+  return `<div class="ci"><h4>Good into ${esc(v.countersFor)}</h4>${c.map(x=>`<div>${x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<span>${esc(x.name)}</span><b class="hi">${pct(x.wr)}</b><small>${num(x.play)} games</small></div>`).join('')}</div>`}
+
+/* how old the numbers are: when op.gg last processed them (or when the site fetched them) */
+function age(b){const t=Number(b&&(b.opggAt||b.updated));if(!t)return '';const m=Math.max(0,Math.round((Date.now()-t)/60000));
+  return m<90?`updated ${m} min ago`:m<48*60?`updated ${Math.round(m/60)} h ago`:`updated ${Math.round(m/1440)} days ago`}
+
 function clash(c){
   if(!c)return '';
   const sc=c.scout,show=c.show||'';
@@ -159,9 +170,9 @@ function render(v){
   if(v.state==='loading'){m.innerHTML=`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
   if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
-  if(b.region&&b.region!=='EUW')$('ver').textContent='All regions (op.gg EUW is down)';
   const ro=v.runeOrder||[],so=v.spellOrder||[];
-  m.innerHTML=matchup(v.matchup)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+  const ag=age(b);$('ver').textContent=(b.region&&b.region!=='EUW'?'All regions (op.gg EUW is down)':'EUW · Emerald+')+(ag?' · '+ag:'');$('ver').title='App '+(v.version||'');
+  m.innerHTML=matchup(v.matchup)+counters(v)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
     +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
     +skills(b)+clash(v.clash);
   bindClash();

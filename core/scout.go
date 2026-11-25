@@ -395,3 +395,24 @@ func ScoutTeam(m *ClashMatch, t *TierList) Scout {
 	sort.SliceStable(s.Players, func(a, b int) bool { return order[s.Players[a].Role] < order[s.Players[b].Role] })
 	return s
 }
+
+// Counters turns the lane opponent's build into pick ideas against them: the champions the opponent
+// does worst against in that lane (40+ games each), with your win rate (1 - theirs), best first.
+func Counters(opp *Build, n int) []VsEntry {
+	if opp == nil {
+		return nil
+	}
+	list := append([]VsEntry{}, opp.Vs...)
+	sort.SliceStable(list, func(a, b int) bool { return list[a].WR < list[b].WR })
+	var out []VsEntry
+	for _, v := range list {
+		if len(out) == n {
+			break
+		}
+		if v.WR >= 0.5 {
+			break // only champions that actually beat them
+		}
+		out = append(out, VsEntry{ID: v.ID, Name: v.Name, WR: math.Round((1-v.WR)*10000) / 10000, Play: v.Play})
+	}
+	return out
+}

@@ -14,6 +14,9 @@ and role (EUW, Emerald+). Click **Apply** and it sets them in the client. Nothin
 - It remembers what you picked per champion and role, and shows that first next time.
 - **Lane matchup**: once the enemy laner is picked, the panel guesses who's in your lane (from the site's role stats)
   and shows your win rate against them, with how many games that's based on.
+- **Counter-pick ideas**: while you're still hovering and their laner is known, "Good into Syndra" lists the three
+  champions that beat them most in that lane (from the opponent's own matchup data, 40+ games each), with your win rate.
+- **Data age** in the panel footer ("EUW · Emerald+ · updated 2 h ago"): when op.gg last processed the numbers.
 - **Clash scouting** (only when the client says the game is Clash): reads this round's opponent from the League client's
   own Clash data (your team → bracket → the other team's roster with their registered positions; their champions from the
   client's scouting data, or else their last 20 games), and shows each enemy's role, three most played champions and

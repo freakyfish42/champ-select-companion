@@ -153,3 +153,17 @@ func TestClashStore(t *testing.T) {
 		t.Fatal("missing match accepted")
 	}
 }
+
+func TestCounters(t *testing.T) {
+	syndra := &Build{Vs: []VsEntry{{"Ahri", "Ahri", 0.4483, 1682}, {"Zed", "Zed", 0.52, 900}, {"Kassadin", "Kassadin", 0.45, 300}, {"Vex", "Vex", 0.49, 120}, {"Lux", "Lux", 0.43, 80}}}
+	c := Counters(syndra, 3)
+	if len(c) != 3 || c[0].Name != "Lux" || c[0].WR != 0.57 || c[1].Name != "Ahri" || c[1].WR != 0.5517 || c[2].Name != "Kassadin" {
+		t.Fatalf("%+v", c)
+	}
+	if len(Counters(&Build{Vs: []VsEntry{{"Zed", "Zed", 0.55, 900}}}, 3)) != 0 {
+		t.Fatal("a champion that loses to them is no counter")
+	}
+	if Counters(nil, 3) != nil {
+		t.Fatal("nil")
+	}
+}

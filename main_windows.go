@@ -77,6 +77,8 @@ type App struct {
 	enemies  []core.EnemyPick  // champions the other team has shown
 	posOf    map[string]string // Clash: the opponents' registered positions, by puuid
 	gen      int               // counts champ selects, so late answers from an earlier one are dropped
+	needCnt  string            // set by view(): a lane opponent's build to fetch for counter-pick ideas
+	cntBusy  map[string]bool
 	tier     *core.TierList
 	tierAt   time.Time
 	cl       clashState
@@ -534,6 +536,8 @@ type view struct {
 	Pref    core.Pref       `json:"remembered"`
 	Applied core.Pref       `json:"applied"`
 	Matchup *core.Matchup   `json:"matchup,omitempty"`
+	Counter []core.VsEntry  `json:"counters,omitempty"` // pick ideas against the lane opponent, while not locked in
+	CntFor  string          `json:"countersFor,omitempty"`
 	Clash   *clashView      `json:"clash,omitempty"`
 }
 
@@ -566,6 +570,14 @@ func (a *App) view() view {
 		}
 		m := core.LaneMatchup(a.build, a.roleOf(), en, known, a.tier)
 		v.Matchup = &m
+		if m.Opp != "" && m.OppID != "" && m.Role != "" && !a.pick.Locked {
+			ck := m.OppID + ":" + m.Role
+			if c, ok := a.cache[ck]; ok {
+				v.Counter, v.CntFor = core.Counters(c.b, 3), m.Opp
+			} else {
+				a.needCnt = ck
+			}
+		}
 	}
 	if a.clash && a.state != "unsupported" {
 		v.Clash = a.cl.view()
@@ -576,6 +588,16 @@ func (a *App) view() view {
 func (a *App) push() {
 	a.mu.Lock()
 	v := a.view()
+	if k := a.needCnt; k != "" {
+		a.needCnt = ""
+		if a.cntBusy == nil {
+			a.cntBusy = map[string]bool{}
+		}
+		if !a.cntBusy[k] {
+			a.cntBusy[k] = true
+			go a.fetchCounters(k)
+		}
+	}
 	w := a.w
 	b, _ := json.Marshal(v)
 	s := string(b)
@@ -586,6 +608,22 @@ func (a *App) push() {
 	a.lastSent = s
 	a.mu.Unlock()
 	w.Dispatch(func() { w.Eval("window.render && window.render(" + s + ")") })
+}
+
+// fetchCounters reads the lane opponent's build (key "Alias:role"); its matchups give the counter-pick ideas.
+func (a *App) fetchCounters(k string) {
+	alias, role, _ := strings.Cut(k, ":")
+	b, err := core.FetchBuild(a.web, core.SiteURL, alias, role)
+	a.mu.Lock()
+	if err == nil {
+		a.cache[k] = cached{b, time.Now()}
+	} else {
+		log.Printf("counters %s: %v", k, err)
+	}
+	a.mu.Unlock()
+	if err == nil {
+		a.push()
+	}
 }
 
 func (a *App) forcePush() {
