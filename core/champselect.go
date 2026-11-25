@@ -1,0 +1,87 @@
+package core
+
+type Session struct {
+	LocalPlayerCellID int        `json:"localPlayerCellId"`
+	MyTeam            []Member   `json:"myTeam"`
+	Actions           [][]Action `json:"actions"`
+}
+
+type Member struct {
+	CellID     int    `json:"cellId"`
+	ChampionID int    `json:"championId"`
+	PickIntent int    `json:"championPickIntent"`
+	Position   string `json:"assignedPosition"`
+	Spell1     int    `json:"spell1Id"`
+	Spell2     int    `json:"spell2Id"`
+}
+
+type Action struct {
+	ActorCellID  int    `json:"actorCellId"`
+	ChampionID   int    `json:"championId"`
+	Completed    bool   `json:"completed"`
+	IsInProgress bool   `json:"isInProgress"`
+	Type         string `json:"type"`
+}
+
+// Pick is what the local player has: the champion (locked, hovered or declared), the role and current spells.
+type Pick struct {
+	ChampionID int
+	Locked     bool
+	Role       string // top, jungle, mid, adc, support, or "" when the queue has no roles
+	Spell1     int
+	Spell2     int
+}
+
+func (s Session) Mine() Pick {
+	var me Member
+	for _, m := range s.MyTeam {
+		if m.CellID == s.LocalPlayerCellID {
+			me = m
+			break
+		}
+	}
+	p := Pick{Role: RoleFromPosition(me.Position), Spell1: me.Spell1, Spell2: me.Spell2}
+	var hover int
+	for _, group := range s.Actions {
+		for _, a := range group {
+			if a.ActorCellID != s.LocalPlayerCellID || a.Type != "pick" || a.ChampionID <= 0 {
+				continue
+			}
+			if a.Completed {
+				p.ChampionID, p.Locked = a.ChampionID, true
+			} else if a.IsInProgress {
+				hover = a.ChampionID
+			}
+		}
+	}
+	switch {
+	case p.Locked:
+	case hover > 0:
+		p.ChampionID = hover
+	case me.ChampionID > 0:
+		p.ChampionID = me.ChampionID
+	default:
+		p.ChampionID = me.PickIntent
+	}
+	return p
+}
+
+// RoleFromPosition maps the client's assigned positions to the site's role names.
+func RoleFromPosition(p string) string {
+	switch p {
+	case "top":
+		return "top"
+	case "jungle":
+		return "jungle"
+	case "middle", "mid":
+		return "mid"
+	case "bottom", "adc":
+		return "adc"
+	case "utility", "support":
+		return "support"
+	}
+	return ""
+}
+
+// SupportedMode: the site's numbers are ranked Summoner's Rift, so only Rift games get suggestions.
+func SupportedMode(mode string) bool { return mode == "CLASSIC" }

@@ -1,0 +1,79 @@
+package main
+
+import (
+	"os"
+	"runtime"
+
+	"fyne.io/systray"
+	"github.com/freakyfish42/lomsland-companion/core"
+)
+
+// runTray runs the tray icon and its menu on a thread of its own (the panel owns the main thread).
+func runTray(a *App) {
+	runtime.LockOSThread()
+	systray.Run(func() { trayReady(a) }, func() {})
+}
+
+func trayReady(a *App) {
+	systray.SetIcon(iconICO)
+	systray.SetTooltip("lømsland companion")
+	title := systray.AddMenuItem("lømsland companion "+version, "")
+	title.Disable()
+	status := systray.AddMenuItem("Waiting for League", "")
+	status.Disable()
+	a.mu.Lock()
+	a.onStatus = func(s string) { status.SetTitle(s) }
+	cur := a.status
+	cfg := a.cfg
+	a.mu.Unlock()
+	if cur != "" {
+		status.SetTitle(cur)
+	}
+	systray.AddSeparator()
+	showAgain := systray.AddMenuItem("Show the panel again", "Bring back the panel if you closed it in this champ select")
+	showPanel := systray.AddMenuItemCheckbox("Show panel in champ select", "", cfg.ShowPanel)
+	testMode := systray.AddMenuItemCheckbox("Test mode (Apply only describes)", "Apply buttons say what they would change, and change nothing", cfg.TestMode)
+	autostart := systray.AddMenuItemCheckbox("Start with Windows", "", autostartEnabled())
+	systray.AddSeparator()
+	site := systray.AddMenuItem("Open build.lømsland.no", "")
+	logs := systray.AddMenuItem("Open log folder", "")
+	update := systray.AddMenuItem("Check for updates", "")
+	systray.AddSeparator()
+	quit := systray.AddMenuItem("Quit", "")
+
+	toggle := func(m *systray.MenuItem) bool {
+		if m.Checked() {
+			m.Uncheck()
+			return false
+		}
+		m.Check()
+		return true
+	}
+	for {
+		select {
+		case <-showAgain.ClickedCh:
+			showPanel.Check()
+			a.showAgain()
+		case <-showPanel.ClickedCh:
+			a.setShowPanel(toggle(showPanel))
+		case <-testMode.ClickedCh:
+			a.setTestMode(toggle(testMode))
+		case <-autostart.ClickedCh:
+			on := toggle(autostart)
+			if exe, err := os.Executable(); err == nil {
+				if err := setAutostart(on, exe); err != nil {
+					messageBox("Couldn't change the start-with-Windows setting: "+err.Error(), mbIconWarning)
+				}
+			}
+		case <-site.ClickedCh:
+			openURL(core.SiteURL + "/")
+		case <-logs.ClickedCh:
+			openURL(a.dir)
+		case <-update.ClickedCh:
+			go a.checkUpdate(true)
+		case <-quit.ClickedCh:
+			systray.Quit()
+			os.Exit(0)
+		}
+	}
+}

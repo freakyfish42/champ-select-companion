@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Same Retro look as build.lømsland.no: night blue, old gold, classic serif */
+:root{color-scheme:dark;--line:#3b3422;--ink:#ebe3c9;--mute:#98a4af;--gold:#c8aa6e;--chip:#122133;--good:#5fb98a;--bad:#e08a7a}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;overflow:hidden}
+body{color:var(--ink);font:13px/1.4 Inter,system-ui,sans-serif;background:linear-gradient(180deg,#0f1d2e,#070d17);border:1px solid var(--line);display:flex;flex-direction:column;user-select:none}
+h3{font:700 12px Cinzel,Georgia,serif;letter-spacing:.06em;color:var(--gold);margin:12px 0 6px}
+.top{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-bottom:1px solid var(--line);cursor:move;background:rgba(0,0,0,.2)}
+.top img{width:40px;height:40px;border-radius:8px;border:1px solid var(--gold);background:var(--chip);flex:none}
+.top .t{flex:1}
+.top b{display:block;font:700 16px Cinzel,Georgia,serif;letter-spacing:.03em}
+.top small{color:var(--mute);font-size:12px}
+.x{all:unset;cursor:pointer;color:var(--mute);font-size:18px;line-height:1;padding:4px 6px;border-radius:6px}
+.x:hover{color:var(--ink);background:rgba(255,255,255,.08)}
+main{flex:1;overflow-y:auto;padding:0 12px 10px}
+main::-webkit-scrollbar{width:6px}main::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.card{border:1px solid rgba(59,52,34,.8);border-radius:10px;padding:8px 9px;margin-bottom:7px;background:rgba(0,0,0,.18)}
+.card.on{border-color:var(--good)}
+.row{display:flex;align-items:center;gap:8px}
+.ks{width:34px;height:34px;flex:none}
+.nm{flex:1}.nm b{font-size:14px;font-weight:600}.nm small{display:block;color:var(--mute);font-size:11.5px}
+.ics{display:flex;gap:3px;margin:6px 0 2px;flex-wrap:wrap;align-items:center}
+.ics img{width:22px;height:22px;border-radius:50%;background:#0a0f18}
+.ics .sep{width:1px;height:16px;background:var(--line);margin:0 3px}
+.shards{color:var(--mute);font-size:11px}
+.st{color:var(--mute);font-size:11.5px;margin-top:3px}.st b{color:var(--ink);font-weight:600}
+.hi{color:#6fd3c0}.lo{color:var(--bad)}
+button.ap{font:600 12px Inter,sans-serif;color:var(--ink);cursor:pointer;border-radius:7px;border:1px solid var(--line);background:linear-gradient(180deg,#1a2c42,#0f1b2b);padding:5px 11px;flex:none}
+button.ap:hover{border-color:var(--gold)}
+button.ap.done{border-color:var(--good);color:var(--good);background:none}
+button.ap:disabled{opacity:.6;cursor:default}
+.tag{white-space:nowrap;font-size:10.5px;color:var(--gold);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin-left:6px;vertical-align:1px;font-weight:500}
+.sp img{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);flex:none}
+.sk{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--gold);background:var(--chip);font:700 12px Cinzel,serif;position:relative;overflow:hidden}
+.sk img{position:absolute;inset:0;width:100%;height:100%;opacity:.5}.sk span{position:relative;text-shadow:0 1px 2px #000}
+.gt{color:var(--gold);margin:0 2px}
+.msg{font-size:12px;margin:4px 0 0;color:var(--mute)}.msg.err{color:var(--bad)}.msg.ok{color:var(--good)}
+.rep{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+.rep button{all:unset;cursor:pointer;font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px}
+.rep button:hover{border-color:var(--gold)}
+.empty{color:var(--mute);padding:28px 6px;text-align:center;font-size:13px}
+.foot{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--mute)}
+.foot a{color:var(--gold);cursor:pointer;text-decoration:none}.foot a:hover{text-decoration:underline}
+.test{background:#4a3a12;color:#ffd68a;font-size:11.5px;padding:5px 12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="top" id="top"><img id="cimg" alt="" hidden onerror="this.style.visibility='hidden'" onload="this.style.visibility=''"><div class="t"><b id="cname">lømsland</b><small id="csub">Waiting for champ select</small></div><button class="x" id="close" title="Hide for this champ select">×</button></div>
+<div class="test" id="test" hidden>Test mode: Apply only shows what it would change</div>
+<main id="main"><div class="empty">Waiting for champ select…</div></main>
+<div class="foot"><span id="ver">EUW · Emerald+</span><a id="full">Full build ↗</a></div>
+<script>
+const DD='https://ddragon.leagueoflegends.com/cdn/';
+const RN={top:'Top',jungle:'Jungle',mid:'Mid',adc:'Bot',support:'Support'};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct=x=>x==null?'–':(x*100).toFixed(1)+'%';
+const num=n=>(n||0).toLocaleString('en-GB');
+const wr=x=>`<span class="${x==null?'':x>=.52?'hi':x<.48?'lo':''}">${pct(x)} win</span>`;
+const img=(src,cls='',t='')=>src?`<img class="${cls}" src="${esc(src)}" title="${esc(t)}" alt="" onerror="this.style.visibility='hidden'">`:'';
+const runeImg=r=>r&&r.icon?img(DD+'img/'+r.icon,'',r.name):'';
+let V=null,ver='',notes={};
+const $=id=>document.getElementById(id);
+$('top').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))window.drag&&drag()});
+$('close').onclick=()=>window.hidePanel&&hidePanel();
+$('full').onclick=()=>window.openBuild&&openBuild();
+
+function head(v){
+  const b=v.build;if(b&&b.version)ver=b.version;
+  const id=(b&&b.id)||v.alias;
+  $('cimg').hidden=!(id&&ver);if(id&&ver)$('cimg').src=`${DD}${ver}/img/champion/${id}.png`;
+  $('cname').textContent=v.name||'lømsland';
+  let sub='';
+  if(v.state==='unsupported')sub='Champ select';
+  else if(v.name)sub=[RN[v.role]||'',v.locked?'Locked in':'Hovering'].filter(Boolean).join(' · ');
+  else sub='Champ select';
+  $('csub').textContent=sub;
+  $('test').hidden=!v.test;
+  $('ver').textContent='EUW · Emerald+ · '+(v.version||'');
+}
+
+function runeCard(b,i,v){
+  const r=b.runes[i],k=r.keys[0]||{},applied=v.applied&&v.applied.keystone===k.id&&k.id;
+  const mine=v.remembered&&v.remembered.keystone===k.id&&k.id;
+  return `<div class="card${applied?' on':''}" id="rc${i}"><div class="row">${runeImg(k).replace('<img ','<img class="ks" ')}
+    <div class="nm"><b>${esc(k.name)}</b>${mine?'<span class="tag">your pick</span>':''}<small>${esc(r.primary.name)} + ${esc(r.secondary.name)}</small></div>
+    <button class="ap${applied?' done':''}" data-rune="${i}">${applied?'✓ Applied':'Apply'}</button></div>
+    <div class="ics">${r.keys.slice(1).map(runeImg).join('')}<span class="sep"></span>${r.subs.map(runeImg).join('')}</div>
+    <div class="shards">${r.shards.map(s=>esc(s.name)).join(' · ')}</div>
+    <div class="st"><b>${pct(r.pick)}</b> · ${num(r.play)} games · ${wr(r.wr)}</div>
+    ${notes['r'+i]||''}</div>`}
+
+function spellRow(b,i,v){
+  const s=b.summs[i],ids=s.ids||[],ap=v.applied&&v.applied.spells||[],rm=v.remembered&&v.remembered.spells||[];
+  const same=(x,y)=>x.length===2&&y.length===2&&((x[0]===y[0]&&x[1]===y[1])||(x[0]===y[1]&&x[1]===y[0]));
+  const applied=same(ids,ap),mine=same(ids,rm);
+  const sp=(s.spells||[]);
+  return `<div class="card sp${applied?' on':''}"><div class="row">${sp.map(x=>x.img&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):'').join('')}
+    <div class="nm"><b style="font-size:13px">${sp.map(x=>esc(x.name)).join(' + ')||ids.join(' + ')}</b>${mine?'<span class="tag">your pick</span>':''}<small><b style="color:var(--ink);font-size:11.5px">${pct(s.pick)}</b> · ${num(s.play)} games · ${wr(s.wr)}</small></div>
+    <button class="ap${applied?' done':''}" data-spell="${i}">${applied?'✓':'Apply'}</button></div>${notes['s'+i]||''}</div>`}
+
+function skills(b){
+  const mx=b.max&&b.max.order,sp=b.spells||[];
+  if(!mx)return '';
+  const box=k=>{const x=sp.find(s=>s.key===k);return `<span class="sk">${x&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):''}<span>${k}</span></span>`};
+  const first=b.skills&&b.skills.order?b.skills.order.slice(0,3).join(' '):'';
+  return `<h3>Skill order</h3><div class="row">${mx.map(box).join('<span class="gt">›</span>')}${first?`<small style="color:var(--mute);margin-left:auto">Start ${esc(first)}</small>`:''}</div>`}
+
+function render(v){
+  const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
+  V=v;head(v);const m=$('main');
+  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`;return}
+  if(v.state==='unsupported'){m.innerHTML=`<div class="empty">No suggestions in this mode. The stats are for ranked Summoner's Rift, so they'd be wrong for ${v.mode==='ARAM'?'ARAM':v.mode==='CHERRY'?'Arena':'this mode'}.</div>`;return}
+  if(v.state==='loading'){m.innerHTML=`<div class="empty">Loading ${esc(v.name)}…</div>`;return}
+  if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
+  const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
+  if(b.region&&b.region!=='EUW')$('ver').textContent='All regions (op.gg EUW is down)';
+  const ro=v.runeOrder||[],so=v.spellOrder||[];
+  m.innerHTML=(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+    +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
+    +skills(b);
+}
+window.render=render;
+
+document.addEventListener('click',async e=>{
+  const rb=e.target.closest('button[data-rune]'),sb=e.target.closest('button[data-spell]'),pb=e.target.closest('button[data-replace]'),cb=e.target.closest('button[data-cancel]');
+  if(cb){delete notes['r'+cb.dataset.cancel];render(V);return}
+  if(rb||pb){
+    const i=+(rb?rb.dataset.rune:pb.dataset.idx),rep=pb?+pb.dataset.replace:0;
+    (rb||pb).disabled=true;
+    let r;try{r=await applyRunes(i,rep)}catch(err){r={ok:false,msg:String(err)}}
+    if(r.replace&&r.replace.length)notes['r'+i]=`<div class="msg">${esc(r.msg)}</div><div class="rep">${r.replace.map(p=>`<button data-replace="${p.id}" data-idx="${i}">Replace “${esc(p.name)}”</button>`).join('')}<button data-cancel="${i}">Cancel</button></div>`;
+    else notes['r'+i]=`<div class="msg ${r.ok?'ok':'err'}">${esc(r.msg)}</div>`;
+    if(r.ok&&!V.test)setTimeout(()=>{delete notes['r'+i];render(V)},2500);
+    render(V);return}
+  if(sb){
+    const i=+sb.dataset.spell;sb.disabled=true;
+    let r;try{r=await applySpells(i)}catch(err){r={ok:false,msg:String(err)}}
+    notes['s'+i]=r.ok&&!V.test?'':`<div class="msg ${r.ok?'ok':'err'}">${esc(r.msg)}</div>`;
+    render(V);return}
+});
+window.ready&&ready();
+</script>
+</body>
+</html>
