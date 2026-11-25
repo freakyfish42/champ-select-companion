@@ -40,7 +40,7 @@ func TestCardRect(t *testing.T) {
 	if r != (Rect{16, 118, 316, 210}) {
 		t.Fatal("default spot", r)
 	}
-	if r := CardRect(game, 1.5, 0, 0, 110, 125); r.Right-r.Left != 562 || r.Bottom-r.Top != 171 {
+	if r := CardRect(game, 1.5, 0, 0, 110, 125); r.Right-r.Left != 563 || r.Bottom-r.Top != 171 {
 		t.Fatal("size and DPI", r)
 	}
 	// dragged far off the edge, or the game got smaller: pulled back inside

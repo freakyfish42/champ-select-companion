@@ -39,7 +39,8 @@ func CardRect(game Rect, scale float64, dx, dy, cssH int32, size int) Rect {
 	if cssH < 40 {
 		cssH = int32(96 * size / 100)
 	}
-	w, h := int32(300*float64(size)/100*scale), int32(math.Ceil(float64(cssH+4)*scale)) // round up + margin: never cut off
+	w := int32(math.Ceil(300 * float64(size) / 100 * scale)) // round up: never a fraction narrower than the page
+	h := int32(math.Ceil(float64(cssH+4) * scale))           // round up + margin: never cut off
 	if dx == 0 && dy == 0 {
 		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
 	}
