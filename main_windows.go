@@ -490,7 +490,7 @@ func (a *App) loadClientClash() {
 	if err == nil {
 		s := core.ScoutTeam(m, a.loadTier())
 		sc = &s
-		log.Printf("clash: scouted %s from the client", m.Name)
+		log.Printf("clash: scouted the opponent from the client (%d players)", len(s.Players))
 	} else {
 		log.Printf("clash: no scouting from the client: %v", err)
 	}

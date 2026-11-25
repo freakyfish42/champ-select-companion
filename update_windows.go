@@ -309,11 +309,16 @@ func logTail(p string, n int) string {
 	if err != nil {
 		return "(no log yet)"
 	}
+	home, _ := os.UserHomeDir()
 	var lines []string
 	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
-		if !strings.Contains(l, "clash raw ") { // keep other players' Clash data out of the report
-			lines = append(lines, l)
+		if strings.Contains(l, "clash raw ") { // keep other players' Clash data out of the report
+			continue
 		}
+		if len(home) > 3 { // C:\Users\<your Windows name> → %USERPROFILE%
+			l = strings.ReplaceAll(l, home, "%USERPROFILE%")
+		}
+		lines = append(lines, l)
 	}
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
