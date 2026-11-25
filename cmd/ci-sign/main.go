@@ -42,12 +42,28 @@ func main() {
 	switch {
 	case raw == "":
 		fail("the SIGNING_KEY secret is empty or missing (repo Settings → Secrets and variables → Actions)")
-	case strings.Contains(raw, pub):
+	case strings.TrimSpace(raw) == pub:
 		fail("SIGNING_KEY holds the PUBLIC key (%s…), the one companion-sign.exe shows. It must be the line in %%APPDATA%%\\companion-sign\\signing.key", pub[:6])
 	}
-	seed, err := base64.StdEncoding.DecodeString(raw)
-	if err != nil || len(seed) != ed25519.SeedSize {
-		fail("SIGNING_KEY isn't one key line (got %d characters, expected 44, ending in =): paste only the line from signing.key", len(raw))
+	// the key line is 44 characters ending in "="; extra text around it (a label, a second line) is ignored.
+	// Whatever is picked is still checked against the app's update key below, so a wrong pick can't ship.
+	var seed []byte
+	found := 0
+	for _, tok := range regexp.MustCompile(`[A-Za-z0-9+/]{43}=`).FindAllString(raw, -1) {
+		if tok == pub {
+			continue
+		}
+		if b, err := base64.StdEncoding.DecodeString(tok); err == nil && len(b) == ed25519.SeedSize {
+			seed, found = b, found+1
+		}
+	}
+	switch {
+	case found == 0:
+		fail("SIGNING_KEY has no key line in it (%d characters; a key line is 44, ending in =): paste only the line from signing.key", len(raw))
+	case found > 1:
+		fail("SIGNING_KEY has %d key-like lines in it: paste only the one line from signing.key", found)
+	case len(raw) != 44:
+		fmt.Println("::notice::SIGNING_KEY has extra text around the key line; it was ignored")
 	}
 	bin, err := os.ReadFile(exe)
 	if err != nil {
