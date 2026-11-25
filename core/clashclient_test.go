@@ -148,3 +148,34 @@ func TestEnemyPicksPuuid(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+// a substitute listed first must not push a starter out of the five shown
+func TestClashSubstituteDoesNotHideAStarter(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/lol-clash/v1/player":
+			_, _ = w.Write([]byte(`{"rosterId":"r1"}`))
+		case "/lol-clash/v1/roster/r1":
+			_, _ = w.Write([]byte(`{"id":"r1","bracketId":"b","members":[{"puuid":"me"}]}`))
+		case "/lol-clash/v1/bracket/b":
+			_, _ = w.Write([]byte(`{"matches":[{"roundId":1,"rosterId1":"r1","rosterId2":"r2"}]}`))
+		case "/lol-clash/v1/roster/r2":
+			_, _ = w.Write([]byte(`{"members":[{"puuid":"sub","gameName":"Sub"},{"puuid":"a","position":"TOP","gameName":"A"},{"puuid":"b","position":"JUNGLE","gameName":"B"},{"puuid":"c","position":"MIDDLE","gameName":"C"},{"puuid":"d","position":"BOTTOM","gameName":"D"},{"puuid":"e","position":"UTILITY","gameName":"E"}]}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	m, _, err := NewClientURL(srv.URL, "pw", srv.Client()).ClashFromClient("me", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := ScoutTeam(m, tier())
+	names := []string{}
+	for _, p := range s.Players {
+		names = append(names, p.Name)
+	}
+	if strings.Join(names, ",") != "A,B,C,D,E" {
+		t.Fatal(names)
+	}
+}

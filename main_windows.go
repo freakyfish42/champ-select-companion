@@ -76,6 +76,7 @@ type App struct {
 	clash    bool
 	enemies  []core.EnemyPick  // champions the other team has shown
 	posOf    map[string]string // Clash: the opponents' registered positions, by puuid
+	gen      int               // counts champ selects, so late answers from an earlier one are dropped
 	tier     *core.TierList
 	tierAt   time.Time
 	cl       clashState
@@ -288,19 +289,22 @@ func (a *App) watch() {
 }
 
 func (a *App) enterSelect(g core.Game) {
-	mode := g.Mode
+	mode, plan := g.Mode, core.PlanFor(g)
 	a.mu.Lock()
-	a.inSelect, a.phase, a.mode, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Clash, nil, nil
+	a.gen++
+	a.inSelect, a.phase, a.mode, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, plan.ClashClient, nil, nil
 	a.cl = clashState{}
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
 	show := a.cfg.ShowPanel
 	a.mu.Unlock()
-	log.Printf("champ select (%s, clash=%v)", mode, g.Clash)
+	log.Printf("champ select (%s, clash=%v)", mode, plan.ClashClient)
 	go a.loadTier()
-	if g.Clash { // Clash mode only when the client says this is a Clash game
+	if plan.ClashClient { // Clash mode only when the client says this is a Clash game (core.PlanFor)
 		go a.loadClientClash()
+	}
+	if plan.ClashHelper {
 		go a.loadClash("")
 	}
 	if show {
@@ -404,14 +408,18 @@ func (a *App) loadClash(id string) {
 	if id != "" {
 		a.cl.Show = id
 	}
+	if !a.clash {
+		a.mu.Unlock()
+		return
+	}
 	a.cl.seq++
-	seq := a.cl.seq
+	seq, gen := a.cl.seq, a.gen
 	a.cl.Loading, a.cl.Err = true, ""
 	a.mu.Unlock()
 	a.push()
 	finish := func(f func(c *clashState)) {
 		a.mu.Lock()
-		if seq == a.cl.seq {
+		if seq == a.cl.seq && gen == a.gen && a.clash {
 			a.cl.Loading = false
 			f(&a.cl)
 		}
@@ -445,12 +453,13 @@ func (a *App) loadClash(id string) {
 // The client's raw answers go to the log, so the real formats can be checked after a Clash.
 func (a *App) loadClientClash() {
 	a.mu.Lock()
-	lcu, clash := a.lcu, a.clash
-	a.cl.ClientLoading, a.cl.ClientErr = true, ""
-	a.mu.Unlock()
-	if lcu == nil || !clash {
+	lcu, clash, gen := a.lcu, a.clash, a.gen
+	if lcu == nil || !clash { // never outside Clash
+		a.mu.Unlock()
 		return
 	}
+	a.cl.ClientLoading, a.cl.ClientErr = true, ""
+	a.mu.Unlock()
 	a.push()
 	var champs map[int]core.Champion
 	for i := 0; i < 20 && champs == nil; i++ { // the champion list arrives with the first session poll
@@ -482,10 +491,12 @@ func (a *App) loadClientClash() {
 		log.Printf("clash: no scouting from the client: %v", err)
 	}
 	a.mu.Lock()
-	if a.clash {
-		a.cl.ClientLoading, a.cl.Client, a.posOf = false, sc, pos
+	if a.clash && gen == a.gen { // still the same champ select
+		a.cl.ClientLoading = false
 		if err != nil {
-			a.cl.ClientErr = err.Error()
+			a.cl.ClientErr = err.Error() // keep what an earlier read found
+		} else {
+			a.cl.Client, a.posOf = sc, pos
 		}
 		if sc != nil && !a.cl.Picked {
 			a.cl.Show = "@client"

@@ -51,6 +51,10 @@ The panel is a WebView2 window (part of Windows 10/11) showing `panel.html`; the
 
 ## Build
 
+`VISION.md` lists what the app must always be (nothing written without Apply, only runes and spells written, no app
+name in the client, Clash mode only in Clash, …). Each point has a test in `core/vision_test.go`, and `build.sh`
+won't build if any test fails.
+
 ```sh
 go test ./core        # logic, against a fake League client
 ./build.sh v1.0.1     # dist/lomsland-companion.exe + .sha256 (needs Go 1.22+ and llvm-windres)

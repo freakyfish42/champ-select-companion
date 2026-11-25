@@ -6,6 +6,8 @@ V=${1:-dev}
 N=$(echo "$V" | sed 's/^v//; s/-.*//'); case "$N" in *.*.*) ;; *) N=0.0.0;; esac
 C=$(echo "$N" | tr . ,)
 cd "$(dirname "$0")"
+# the owner's requirements (VISION.md) and all other tests must pass before anything is built
+go test ./core >/dev/null || { echo "Tests failed: not building. Run: go test ./core"; exit 1; }
 cat > app.rc <<RC
 1 ICON "icon.ico"
 1 24 "app.manifest"

@@ -431,6 +431,8 @@ func (c *Client) ClashFromClient(myPuuid string, champs map[int]Champion, log Ra
 	if err != nil {
 		return nil, nil, err
 	}
+	// players with a registered position first, so substitutes never push a starter out of the five shown
+	sort.SliceStable(r.Members, func(a, b int) bool { return r.Members[a].Position != "" && r.Members[b].Position == "" })
 	stats := c.scoutingChampions(r.Members, log)
 	source := "scouting"
 	if len(stats) == 0 {
