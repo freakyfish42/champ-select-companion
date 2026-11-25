@@ -129,3 +129,16 @@ func RoleFromPosition(p string) string {
 // normal Rift games ("CLASSIC") and the Practice Tool ("PRACTICETOOL", also the Rift; owner's request,
 // so the app can be tried without queuing).
 func SupportedMode(mode string) bool { return mode == "CLASSIC" || mode == "PRACTICETOOL" }
+
+// Bans: the champions banned so far in this champ select (both teams), by numeric id.
+func (s Session) Bans() []int {
+	var out []int
+	for _, group := range s.Actions {
+		for _, a := range group {
+			if a.Type == "ban" && a.Completed && a.ChampionID > 0 {
+				out = append(out, a.ChampionID)
+			}
+		}
+	}
+	return out
+}

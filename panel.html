@@ -80,6 +80,11 @@ body.ig main{padding:6px 8px 6px;overflow:hidden;flex:none}
 .its i{width:1px;height:18px;background:var(--line);margin:0 4px}
 .igh .mx.nm2{color:var(--ink);font-weight:600;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .its img.hov{outline:2px solid var(--gold)}.sq span.hov{outline:1.5px solid var(--ink)}
+.bn{display:grid;grid-template-columns:repeat(5,1fr);gap:6px 4px;margin:2px 0 6px}
+.bn div{display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.bn img{width:38px;height:38px;border-radius:6px;border:1px solid var(--line)}
+.bn small{font-size:11px;color:var(--mute);font-weight:600}
+.bn .tk img{filter:grayscale(1);opacity:.35}.bn .tk::after{content:"✕";position:absolute;top:6px;font-size:22px;color:#ff8f8f;font-weight:700}
 .mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font-size:11px;color:var(--gold)}
 body.ig.moving{outline:2px dashed var(--gold);cursor:move}
 </style>
@@ -164,6 +169,12 @@ function counters(v){
   const c=v.counters||[];if(!c.length||v.locked)return '';
   return `<div class="ci"><h4>Good into ${esc(v.countersFor)}</h4>${c.map(x=>`<div>${x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<span>${esc(x.name)}</span><b class="hi">${pct(x.wr)}</b><small>${num(x.play)} games</small></div>`).join('')}</div>`}
 
+/* the most banned champions (EUW Emerald+), until you lock in; ones already banned in this game are greyed out */
+function bans(v){
+  const b=v.bans||[];if(!b.length)return '';
+  return `<h3>Most banned <small style="color:var(--mute);font-weight:400;text-transform:none;letter-spacing:0">· EUW Emerald+</small></h3><div class="bn">${b.map(x=>
+    `<div class="${x.taken?'tk':''}" title="${esc(x.name)}: banned in ${pct(x.ban)} of games${x.taken?' · already banned':''}">${ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<small>${pct(x.ban)}</small></div>`).join('')}</div>`}
+
 /* hover names: the app tells the page where the pointer is over the card (the card itself lets clicks through) */
 let hv=[-1,-1];
 window.hover=(x,y)=>{
@@ -228,14 +239,14 @@ function render(v){
   if(v.state==='ingame-none'){V=v;$('main').innerHTML='';return}
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
   V=v;head(v);const m=$('main');
-  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
+  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=bans(v)+`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
   if(v.state==='unsupported'){m.innerHTML=`<div class="empty">No suggestions in this mode. The stats are for ranked Summoner's Rift, so they'd be wrong for ${v.mode==='ARAM'?'ARAM':v.mode==='CHERRY'?'Arena':'this mode'}.</div>`;return}
-  if(v.state==='loading'){m.innerHTML=`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
+  if(v.state==='loading'){m.innerHTML=bans(v)+`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
   if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
   const ro=v.runeOrder||[],so=v.spellOrder||[];
   const ag=age(b);$('ver').textContent=(b.region&&b.region!=='EUW'?'All regions (op.gg EUW is down)':'EUW · Emerald+')+(ag?' · '+ag:'');$('ver').title='App '+(v.version||'');
-  m.innerHTML=matchup(v.matchup)+counters(v)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+  m.innerHTML=bans(v)+matchup(v.matchup)+counters(v)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
     +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
     +skills(b)+clash(v.clash);
   bindClash();

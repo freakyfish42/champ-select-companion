@@ -93,6 +93,7 @@ type App struct {
 	cfg        Config
 	lcu        *core.Client
 	champs     map[int]core.Champion
+	banned     []int // champions banned so far in this champ select
 	inSelect   bool
 	phase      string
 	mode       string
@@ -150,6 +151,14 @@ type clashState struct {
 
 // clashView: what the panel shows. There is nothing to choose: the League client's data when it has
 // this round's opponent, otherwise the newest match saved in the Clash helper, named so you can tell.
+// banView: one champion in the panel's "Most banned" row; Taken = already banned in this champ select.
+type banView struct {
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Ban   float64 `json:"ban"`
+	Taken bool    `json:"taken,omitempty"`
+}
+
 type clashView struct {
 	Scout   *core.Scout `json:"scout,omitempty"`
 	Source  string      `json:"source"` // "client", "helper" or ""
@@ -334,6 +343,7 @@ func (a *App) watch() {
 		if s, err := lcu.Session(); err == nil {
 			a.mu.Lock()
 			a.enemies = s.EnemyPicks()
+			a.banned = s.Bans()
 			a.timer, a.timerAt = s.Timer, time.Now()
 			a.mu.Unlock()
 			a.onPick(s.Mine())
@@ -353,6 +363,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
+	a.banned = nil
 	show := a.cfg.ShowPanel
 	a.mu.Unlock()
 	log.Printf("champ select (%s, %s, clash=%v)", g.Queue, mode, plan.ClashClient)
@@ -726,6 +737,7 @@ type view struct {
 	Matchup *core.Matchup   `json:"matchup,omitempty"`
 	Counter []core.VsEntry  `json:"counters,omitempty"` // pick ideas against the lane opponent, while not locked in
 	CntFor  string          `json:"countersFor,omitempty"`
+	Bans    []banView       `json:"bans,omitempty"` // most banned (EUW Emerald+), until you lock in
 	Clash   *clashView      `json:"clash,omitempty"`
 	Level   int             `json:"level,omitempty"`  // in game: your level
 	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
@@ -778,6 +790,18 @@ func (a *App) view() view {
 			} else {
 				a.needCnt = ck
 			}
+		}
+	}
+	// the most banned champions, to help with bans: shown until you lock in your own champion
+	if a.state != "unsupported" && !a.pick.Locked {
+		taken := map[string]bool{}
+		for _, id := range a.banned {
+			if ch, ok := a.champs[id]; ok {
+				taken[ch.Alias] = true
+			}
+		}
+		for _, b := range a.tier.TopBans(10) {
+			v.Bans = append(v.Bans, banView{ID: b.ID, Name: b.Name, Ban: b.Ban, Taken: taken[b.ID]})
 		}
 	}
 	if a.clash && a.state != "unsupported" {

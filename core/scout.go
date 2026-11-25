@@ -28,9 +28,10 @@ func Norm(s string) string {
 // ---- the site's tier list: how often each champion is played in each role ----
 
 type TierEntry struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-	Play int    `json:"play"`
+	Name string  `json:"name"`
+	ID   string  `json:"id"`
+	Play int     `json:"play"`
+	Ban  float64 `json:"ban"` // ban rate, 0..1 (EUW Emerald+)
 }
 
 type TierList struct {
@@ -415,6 +416,46 @@ func Counters(opp *Build, n int) []VsEntry {
 			break // only champions that actually beat them
 		}
 		out = append(out, VsEntry{ID: v.ID, Name: v.Name, WR: math.Round((1-v.WR)*10000) / 10000, Play: v.Play})
+	}
+	return out
+}
+
+// BanRate is one champion in the most-banned list.
+type BanRate struct {
+	ID   string  `json:"id"` // Data Dragon id, e.g. "MonkeyKing"
+	Name string  `json:"name"`
+	Ban  float64 `json:"ban"`
+}
+
+// TopBans: the n champions banned most often (EUW Emerald+, from the site's tier list). A champion appears in
+// several roles with the same ban rate; it is listed once.
+func (t *TierList) TopBans(n int) []BanRate {
+	if t == nil {
+		return nil
+	}
+	best := map[string]BanRate{}
+	for _, list := range t.Roles {
+		for _, e := range list {
+			if e.ID == "" || e.Ban <= 0 {
+				continue
+			}
+			if b, ok := best[e.ID]; !ok || e.Ban > b.Ban {
+				best[e.ID] = BanRate{ID: e.ID, Name: e.Name, Ban: e.Ban}
+			}
+		}
+	}
+	out := make([]BanRate, 0, len(best))
+	for _, b := range best {
+		out = append(out, b)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Ban != out[j].Ban {
+			return out[i].Ban > out[j].Ban
+		}
+		return out[i].Name < out[j].Name
+	})
+	if len(out) > n {
+		out = out[:n]
 	}
 	return out
 }

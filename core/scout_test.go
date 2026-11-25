@@ -12,11 +12,11 @@ import (
 // a small tier list: play counts per role
 func tier() *TierList {
 	t := &TierList{Roles: map[string][]TierEntry{
-		"top":     {{"Darius", "Darius", 9000}, {"K'Sante", "KSante", 5000}, {"Yasuo", "Yasuo", 2000}, {"Jax", "Jax", 4000}},
-		"jungle":  {{"Lee Sin", "LeeSin", 9000}, {"Kayn", "Kayn", 6000}, {"Graves", "Graves", 4000}, {"Jax", "Jax", 1500}},
-		"mid":     {{"Ahri", "Ahri", 9000}, {"Yasuo", "Yasuo", 6000}, {"Syndra", "Syndra", 5000}, {"Yone", "Yone", 5000}},
-		"adc":     {{"Jinx", "Jinx", 9000}, {"Kai'Sa", "Kaisa", 8000}, {"Ezreal", "Ezreal", 7000}, {"Varus", "Varus", 3000}},
-		"support": {{"Thresh", "Thresh", 9000}, {"Rakan", "Rakan", 4000}, {"Blitzcrank", "Blitzcrank", 3000}},
+		"top":     {{"Darius", "Darius", 9000, 0}, {"K'Sante", "KSante", 5000, 0}, {"Yasuo", "Yasuo", 2000, 0}, {"Jax", "Jax", 4000, 0}},
+		"jungle":  {{"Lee Sin", "LeeSin", 9000, 0}, {"Kayn", "Kayn", 6000, 0}, {"Graves", "Graves", 4000, 0}, {"Jax", "Jax", 1500, 0}},
+		"mid":     {{"Ahri", "Ahri", 9000, 0}, {"Yasuo", "Yasuo", 6000, 0}, {"Syndra", "Syndra", 5000, 0}, {"Yone", "Yone", 5000, 0}},
+		"adc":     {{"Jinx", "Jinx", 9000, 0}, {"Kai'Sa", "Kaisa", 8000, 0}, {"Ezreal", "Ezreal", 7000, 0}, {"Varus", "Varus", 3000, 0}},
+		"support": {{"Thresh", "Thresh", 9000, 0}, {"Rakan", "Rakan", 4000, 0}, {"Blitzcrank", "Blitzcrank", 3000, 0}},
 	}}
 	t.index()
 	return t
