@@ -40,6 +40,21 @@ func trayReady(a *App) {
 	for _, pct := range []int{100, 80, 60} {
 		alphas[pct] = alphaMenu.AddSubMenuItemCheckbox(fmt.Sprintf("%d %%", pct), "", cfg.cardAlpha() == pct)
 	}
+	sizeMenu := systray.AddMenuItem("In-game card size", "How big the card is over the game")
+	sizes := map[int]*systray.MenuItem{}
+	for _, pct := range []int{100, 125, 150} {
+		sizes[pct] = sizeMenu.AddSubMenuItemCheckbox(fmt.Sprintf("%d %%", pct), "", cfg.cardSize() == pct)
+	}
+	pickSize := func(pct int) {
+		for p, m := range sizes {
+			if p == pct {
+				m.Check()
+			} else {
+				m.Uncheck()
+			}
+		}
+		a.setCardSize(pct)
+	}
 	pickAlpha := func(pct int) {
 		for p, m := range alphas {
 			if p == pct {
@@ -85,6 +100,12 @@ func trayReady(a *App) {
 			pickAlpha(80)
 		case <-alphas[60].ClickedCh:
 			pickAlpha(60)
+		case <-sizes[100].ClickedCh:
+			pickSize(100)
+		case <-sizes[125].ClickedCh:
+			pickSize(125)
+		case <-sizes[150].ClickedCh:
+			pickSize(150)
 		case <-testMode.ClickedCh:
 			a.setTestMode(toggle(testMode))
 		case <-autostart.ClickedCh:

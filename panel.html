@@ -203,11 +203,13 @@ function render(v){
   document.documentElement.style.background='transparent';
   document.body.style.setProperty('--ca',v.state==='ingame'?String(Math.min(1,(v.alpha||100)/100)):'1');
   if(v.state==='ingame'){V=v;const m=$('main');m.innerHTML=ingame(v);
+    m.style.zoom=String((v.size||125)/100); /* the tray's card size; the window follows the measured height */
     /* tell the app how tall the card is, so the window fits it exactly (fonts differ a little per PC) */
     requestAnimationFrame(()=>{const h=Math.ceil(m.getBoundingClientRect().height)+2;window.cardHeight&&cardHeight(h)});
     const d=$('mvdone');if(d)d.onclick=()=>window.cardDone&&cardDone();
     if(v.moving)m.onmousedown=e=>{if(e.button===0&&!e.target.closest('button'))window.drag&&drag()};else m.onmousedown=null;
     return}
+  $('main').style.zoom='';
   if(v.state==='ingame-none'){V=v;$('main').innerHTML='';return}
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
   V=v;head(v);const m=$('main');

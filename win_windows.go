@@ -321,11 +321,12 @@ func perPixelAlpha(h uintptr, on bool) {
 // cardRect: the card's place over the game: the saved offset from the game's top-left corner, or by default
 // top left, a little down from the top.
 // cssH is the card's height as the page measured it (CSS px), so nothing is ever cut off.
-func cardRect(game rect, scale float64, dx, dy, cssH int32) rect {
+// size is the tray's card size in percent (the page is zoomed the same way, and measures itself zoomed).
+func cardRect(game rect, scale float64, dx, dy, cssH int32, size int) rect {
 	if cssH < 40 {
-		cssH = 96
+		cssH = int32(96 * size / 100)
 	}
-	w, h := int32(300*scale), int32(float64(cssH)*scale)
+	w, h := int32(300*float64(size)/100*scale), int32(float64(cssH)*scale)
 	if dx == 0 && dy == 0 {
 		dx, dy = int32(16*scale), int32(float64(game.Bottom-game.Top)*0.11)
 	}

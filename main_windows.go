@@ -62,16 +62,26 @@ type Config struct {
 	HideCard  bool  `json:"hideCard,omitempty"` // the tray's "Show build card in game" is off
 	CardDX    int32 `json:"cardDX,omitempty"`   // where the player moved the card: offset from the game's top-left
 	CardDY    int32 `json:"cardDY,omitempty"`
-	CardAlpha int   `json:"cardAlpha,omitempty"` // the card's opacity in percent: 100, 80 or 60 (0 = default 80)
+	CardAlpha int   `json:"cardAlpha,omitempty"` // the card's opacity in percent: 100, 80 or 60 (0 = default 60)
+	CardSize  int   `json:"cardSize,omitempty"`  // the card's size in percent: 100, 125 or 150 (0 = default 125)
 }
 
-// cardAlpha: the card's opacity setting (default 80 %).
+// cardAlpha: the card's opacity setting (default 60 %).
 func (c Config) cardAlpha() int {
 	switch c.CardAlpha {
 	case 100, 80, 60:
 		return c.CardAlpha
 	}
-	return 80
+	return 60
+}
+
+// cardSize: the card's size setting (default 125 %).
+func (c Config) cardSize() int {
+	switch c.CardSize {
+	case 100, 125, 150:
+		return c.CardSize
+	}
+	return 125
 }
 
 type App struct {
@@ -471,6 +481,14 @@ func (a *App) setCardAlpha(pct int) {
 	go a.forcePush()
 }
 
+func (a *App) setCardSize(pct int) {
+	a.mu.Lock()
+	a.cfg.CardSize = pct
+	a.mu.Unlock()
+	a.saveConfig()
+	go a.forcePush()
+}
+
 func (a *App) setShowCard(on bool) {
 	a.mu.Lock()
 	a.cfg.HideCard = !on
@@ -708,6 +726,7 @@ type view struct {
 	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
 	Hotkey  string          `json:"hotkey,omitempty"`
 	Alpha   int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
+	Size    int             `json:"size,omitempty"`  // in game: the card's size in percent
 }
 
 func (a *App) roleOf() string {
@@ -726,7 +745,7 @@ func (a *App) view() view {
 			return view{State: "ingame-none", Version: version}
 		}
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
-			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha()}
+			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
 	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
@@ -956,7 +975,7 @@ func (a *App) uiLoop() {
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	_ = w.Bind("cardDone", func() { go a.setMoving(false) })
 	_ = w.Bind("cardHeight", func(px int) {
-		if px < 40 || px > 400 {
+		if px < 40 || px > 600 {
 			return
 		}
 		a.mu.Lock()
@@ -985,7 +1004,7 @@ func (a *App) follow(h uintptr) {
 		card := a.inGame && a.cardReady() && !a.cardHidden
 		moving := a.moving
 		see := a.cfg.cardAlpha() < 100
-		dx, dy, ch := a.cfg.CardDX, a.cfg.CardDY, a.cardH
+		dx, dy, ch, size := a.cfg.CardDX, a.cfg.CardDY, a.cardH, a.cfg.cardSize()
 		a.mu.Unlock()
 		if card {
 			g, fg := gameWindow(), foreground()
@@ -995,7 +1014,7 @@ func (a *App) follow(h uintptr) {
 					styled, styledMoving, styledSee = true, moving, see
 				}
 				if gr, ok := windowRect(g); ok {
-					r := cardRect(gr, dpiScale(g), dx, dy, ch)
+					r := cardRect(gr, dpiScale(g), dx, dy, ch, size)
 					switch {
 					case !moving && (r != lastCard || !shown):
 						placeTopmost(h, r, true)
