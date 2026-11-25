@@ -74,11 +74,11 @@ type App struct {
 	phase    string
 	mode     string
 	clash    bool
-	enemies  []core.EnemyPick  // champions the other team has shown
-	posOf    map[string]string // Clash: the opponents' registered positions, by puuid
-	gen      int               // counts champ selects, so late answers from an earlier one are dropped
-	needCnt  string            // set by view(): a lane opponent's build to fetch for counter-pick ideas
-	cntBusy  map[string]bool
+	enemies  []core.EnemyPick     // champions the other team has shown
+	posOf    map[string]string    // Clash: the opponents' registered positions, by puuid
+	gen      int                  // counts champ selects, so late answers from an earlier one are dropped
+	needCnt  string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
+	cntNext  map[string]time.Time // when a counter-pick fetch may be tried (again)
 	tier     *core.TierList
 	tierAt   time.Time
 	cl       clashState
@@ -361,7 +361,7 @@ func (a *App) fetch(seq int, key string, ch core.Champion, role string) {
 	b, err := core.FetchBuild(a.web, core.SiteURL, ch.Alias, role)
 	a.mu.Lock()
 	if err == nil {
-		a.cache[key] = cached{b, time.Now()}
+		a.remember(key, b)
 	}
 	if seq == a.seq {
 		if err != nil {
@@ -509,6 +509,14 @@ func (a *App) loadClientClash() {
 	a.forcePush()
 }
 
+// remember keeps a fetched build (caller holds a.mu). The cache is emptied when it gets big.
+func (a *App) remember(k string, b *core.Build) {
+	if len(a.cache) >= 150 {
+		a.cache = map[string]cached{}
+	}
+	a.cache[k] = cached{b, time.Now()}
+}
+
 func (a *App) retry() {
 	a.mu.Lock()
 	a.key = ""
@@ -572,7 +580,7 @@ func (a *App) view() view {
 		v.Matchup = &m
 		if m.Opp != "" && m.OppID != "" && m.Role != "" && !a.pick.Locked {
 			ck := m.OppID + ":" + m.Role
-			if c, ok := a.cache[ck]; ok {
+			if c, ok := a.cache[ck]; ok && time.Since(c.at) < 30*time.Minute {
 				v.Counter, v.CntFor = core.Counters(c.b, 3), m.Opp
 			} else {
 				a.needCnt = ck
@@ -590,11 +598,11 @@ func (a *App) push() {
 	v := a.view()
 	if k := a.needCnt; k != "" {
 		a.needCnt = ""
-		if a.cntBusy == nil {
-			a.cntBusy = map[string]bool{}
+		if a.cntNext == nil {
+			a.cntNext = map[string]time.Time{}
 		}
-		if !a.cntBusy[k] {
-			a.cntBusy[k] = true
+		if time.Now().After(a.cntNext[k]) {
+			a.cntNext[k] = time.Now().Add(2 * time.Minute) // one try at a time; after a failure, wait before retrying
 			go a.fetchCounters(k)
 		}
 	}
@@ -616,7 +624,7 @@ func (a *App) fetchCounters(k string) {
 	b, err := core.FetchBuild(a.web, core.SiteURL, alias, role)
 	a.mu.Lock()
 	if err == nil {
-		a.cache[k] = cached{b, time.Now()}
+		a.remember(k, b)
 	} else {
 		log.Printf("counters %s: %v", k, err)
 	}

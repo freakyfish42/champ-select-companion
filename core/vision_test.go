@@ -201,7 +201,8 @@ func TestVisionNeutralName(t *testing.T) {
 			if !name.MatchString(lit) {
 				continue
 			}
-			cleaned := strings.NewReplacer("xn--lmsland", "", `"lomsland-sign"`, "", `"lomsland-companion"`, "").Replace(lit)
+			// allowed: the site's address, and the early test build's names, used only to find and migrate it
+			cleaned := strings.NewReplacer("xn--lmsland", "", `"lomsland-sign"`, "", `"lomsland-companion"`, "", `"lomsland-companion.exe"`, "").Replace(lit)
 			if strings.Contains(f, "apply.go") && lit == `"lømsland"` { // LegacyPrefix: recognising old pages
 				continue
 			}

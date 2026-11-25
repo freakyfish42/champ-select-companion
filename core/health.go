@@ -54,7 +54,11 @@ func Health(d HealthDeps) []Check {
 
 	// 1. the League client
 	if creds, err := d.FindLeague(); err != nil {
-		add("League client", CheckWarn, "Not running (%s). Start League and check again.", err)
+		if strings.Contains(err.Error(), "isn't running") {
+			add("League client", CheckWarn, "Not running. Start League and check again.")
+		} else {
+			add("League client", CheckWarn, "Not connected: %s. Restart League and check again.", err)
+		}
 	} else if ph, err := d.NewClient(creds).Phase(); err != nil {
 		add("League client", CheckFail, "Found, but can't connect: %s", err)
 	} else {

@@ -97,7 +97,7 @@ func TestHealthProblems(t *testing.T) {
 	d.Autostart = func() bool { return false }
 	cs := Health(d)
 	sum := Summary(cs)
-	for _, want := range []string{"!  League client: Not running", "✗  Build site: Can't reach it", "✗  Panel: Microsoft Edge WebView2 is missing", "!  Updates: v1.0.3 is out (you have v1.0.0)", "!  Start with Windows: Off"} {
+	for _, want := range []string{"!  League client: Not running. Start League and check again.", "✗  Build site: Can't reach it", "✗  Panel: Microsoft Edge WebView2 is missing", "!  Updates: v1.0.3 is out (you have v1.0.0)", "!  Start with Windows: Off"} {
 		if !strings.Contains(sum, want) {
 			t.Errorf("missing %q in\n%s", want, sum)
 		}

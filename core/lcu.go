@@ -48,6 +48,7 @@ func NewClient(c Creds) *Client {
 		Proxy:           nil, // never send local traffic through a proxy
 		TLSClientConfig: RiotTLS(),
 		MaxIdleConns:    4,
+		IdleConnTimeout: 30 * time.Second, // don't keep connections to a client that has restarted
 	}
 	return NewClientURL(fmt.Sprintf("https://127.0.0.1:%d", c.Port), c.Password, &http.Client{Transport: tr, Timeout: 5 * time.Second})
 }

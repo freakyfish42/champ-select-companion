@@ -106,6 +106,9 @@ func migrateOld(dir string) {
 	}
 	removeOldAutostart()
 	log.Printf("moved settings over from the early test build in %s", old)
+	if processRunning("lomsland-companion.exe") {
+		messageBox("An early test version of this app is still running, so you may see two panels.\n\nRight-click its tray icon and choose Quit. It won't start with Windows again.", mbIconWarning)
+	}
 }
 
 func cleanupOld(dir string) {
