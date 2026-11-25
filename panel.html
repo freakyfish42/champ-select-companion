@@ -87,7 +87,7 @@ function runeCard(b,i,v){
   const r=b.runes[i],k=r.keys[0]||{},applied=v.applied&&v.applied.keystone===k.id&&k.id;
   const mine=v.remembered&&v.remembered.keystone===k.id&&k.id;
   return `<div class="card${applied?' on':''}" id="rc${i}"><div class="row">${runeImg(k).replace('<img ','<img class="ks" ')}
-    <div class="nm"><b>${esc(k.name)}</b>${mine?'<span class="tag">your pick</span>':''}<small>${esc(r.primary.name)} + ${esc(r.secondary.name)}</small></div>
+    <div class="nm"><b>${esc(k.name)}</b>${mine?' <span class="tag">your pick</span>':''}<small>${esc(r.primary.name)} + ${esc(r.secondary.name)}</small></div>
     <button class="ap${applied?' done':''}" data-rune="${i}">${applied?'✓ Applied':'Apply'}</button></div>
     <div class="ics">${r.keys.slice(1).map(runeImg).join('')}<span class="sep"></span>${r.subs.map(runeImg).join('')}</div>
     <div class="shards">${r.shards.map(s=>esc(s.name)).join(' · ')}</div>
@@ -100,7 +100,7 @@ function spellRow(b,i,v){
   const applied=same(ids,ap),mine=same(ids,rm);
   const sp=(s.spells||[]);
   return `<div class="card sp${applied?' on':''}"><div class="row">${sp.map(x=>x.img&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):'').join('')}
-    <div class="nm"><b style="font-size:13px">${sp.map(x=>esc(x.name)).join(' + ')||ids.join(' + ')}</b>${mine?'<span class="tag">your pick</span>':''}<small><b style="color:var(--ink);font-size:11.5px">${pct(s.pick)}</b> · ${num(s.play)} games · ${wr(s.wr)}</small></div>
+    <div class="nm"><b style="font-size:13px">${sp.map(x=>esc(x.name)).join(' + ')||ids.join(' + ')}</b>${mine?' <span class="tag">your pick</span>':''}<small><b style="color:var(--ink);font-size:11.5px">${pct(s.pick)}</b> · ${num(s.play)} games · ${wr(s.wr)}</small></div>
     <button class="ap${applied?' done':''}" data-spell="${i}">${applied?'✓':'Apply'}</button></div>${notes['s'+i]||''}</div>`}
 
 function skills(b){
