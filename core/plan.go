@@ -12,6 +12,6 @@ type SelectPlan struct {
 // (and it's on the Rift: ARAM Clash gets nothing).
 func PlanFor(g Game) SelectPlan {
 	rift := SupportedMode(g.Mode)
-	clash := rift && g.Clash
+	clash := g.Mode == "CLASSIC" && g.Clash // Summoner's Rift 5v5 Clash only (not the Practice Tool)
 	return SelectPlan{Panel: rift, ClashClient: clash, ClashHelper: clash}
 }

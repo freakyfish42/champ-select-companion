@@ -133,6 +133,8 @@ func QueueName(id int, desc, mode string, clash bool) string {
 	switch {
 	case clash && mode == "CLASSIC":
 		return "Clash"
+	case mode == "PRACTICETOOL":
+		return "Practice Tool"
 	case queueNames[id] != "":
 		return queueNames[id]
 	case id <= 0 && mode != "":

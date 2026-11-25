@@ -487,6 +487,7 @@ func TestQueueName(t *testing.T) {
 		{700, "", "CLASSIC", true, "Clash"},
 		{0, "", "CLASSIC", true, "Clash"}, // the client says Clash: trust it
 		{450, "", "ARAM", false, "ARAM"},
+		{-1, "", "PRACTICETOOL", false, "Practice Tool"},
 		{-1, "", "CLASSIC", false, "Custom game"},
 		{9999, "Some new event queue with a very long name", "CLASSIC", false, "Some new event queue with a …"},
 		{9999, "", "", false, ""},

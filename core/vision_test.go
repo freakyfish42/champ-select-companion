@@ -245,6 +245,8 @@ func TestVisionClashOnlyInClash(t *testing.T) {
 		{Game{Mode: "ARAM", Clash: true}, SelectPlan{}},
 		{Game{Mode: "ARAM"}, SelectPlan{}},
 		{Game{Mode: "CHERRY"}, SelectPlan{}},
+		{Game{Mode: "PRACTICETOOL"}, SelectPlan{Panel: true}},
+		{Game{Mode: "PRACTICETOOL", Clash: true}, SelectPlan{Panel: true}}, // never Clash outside Summoner's Rift 5v5
 		{Game{Mode: ""}, SelectPlan{}},
 	}
 	for _, c := range cases {

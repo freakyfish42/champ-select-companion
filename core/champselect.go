@@ -102,5 +102,7 @@ func RoleFromPosition(p string) string {
 	return ""
 }
 
-// SupportedMode: the site's numbers are ranked Summoner's Rift, so only Rift games get suggestions.
-func SupportedMode(mode string) bool { return mode == "CLASSIC" }
+// SupportedMode: the site's numbers are ranked Summoner's Rift, so only Rift games get suggestions:
+// normal Rift games ("CLASSIC") and the Practice Tool ("PRACTICETOOL", also the Rift; owner's request,
+// so the app can be tried without queuing).
+func SupportedMode(mode string) bool { return mode == "CLASSIC" || mode == "PRACTICETOOL" }
