@@ -74,7 +74,8 @@ type App struct {
 	phase    string
 	mode     string
 	clash    bool
-	enemies  []int // champion ids the other team has shown
+	enemies  []core.EnemyPick  // champions the other team has shown
+	posOf    map[string]string // Clash: the opponents' registered positions, by puuid
 	tier     *core.TierList
 	tierAt   time.Time
 	cl       clashState
@@ -98,12 +99,42 @@ type App struct {
 	uiOnce   sync.Once
 }
 
+// clashState: scouting from the League client (this round's opponent) and from the Clash helper's saved matches.
 type clashState struct {
-	Matches []core.ClashMatchInfo `json:"matches"`
-	Scout   *core.Scout           `json:"scout,omitempty"`
-	Loading bool                  `json:"loading"`
-	Err     string                `json:"err,omitempty"`
-	seq     int
+	Matches       []core.ClashMatchInfo
+	Helper        *core.Scout
+	Client        *core.Scout
+	Show          string // "@client" or a saved match id
+	Picked        bool   // the player chose what to show
+	Loading       bool
+	Err           string
+	ClientLoading bool
+	ClientErr     string
+	seq           int
+}
+
+type clashView struct {
+	Matches       []core.ClashMatchInfo `json:"matches"`
+	Scout         *core.Scout           `json:"scout,omitempty"`
+	Show          string                `json:"show"`
+	HasClient     bool                  `json:"hasClient"`
+	Loading       bool                  `json:"loading"`
+	Err           string                `json:"err,omitempty"`
+	ClientLoading bool                  `json:"clientLoading"`
+	ClientErr     string                `json:"clientErr,omitempty"`
+}
+
+func (c clashState) view() *clashView {
+	v := &clashView{Matches: c.Matches, Show: c.Show, HasClient: c.Client != nil, Loading: c.Loading, ClientLoading: c.ClientLoading, ClientErr: c.ClientErr}
+	if c.Show == "@client" && c.Client != nil {
+		v.Scout = c.Client
+	} else {
+		v.Scout, v.Err = c.Helper, c.Err
+		if c.Helper != nil {
+			v.Show = c.Helper.MatchID
+		}
+	}
+	return v
 }
 
 type cached struct {
@@ -259,7 +290,8 @@ func (a *App) watch() {
 func (a *App) enterSelect(g core.Game) {
 	mode := g.Mode
 	a.mu.Lock()
-	a.inSelect, a.phase, a.mode, a.clash, a.enemies = true, "ChampSelect", mode, g.Clash, nil
+	a.inSelect, a.phase, a.mode, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Clash, nil, nil
+	a.cl = clashState{}
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
@@ -267,7 +299,8 @@ func (a *App) enterSelect(g core.Game) {
 	a.mu.Unlock()
 	log.Printf("champ select (%s, clash=%v)", mode, g.Clash)
 	go a.loadTier()
-	if g.Clash {
+	if g.Clash { // Clash mode only when the client says this is a Clash game
+		go a.loadClientClash()
 		go a.loadClash("")
 	}
 	if show {
@@ -356,8 +389,21 @@ func (a *App) loadTier() *core.TierList {
 }
 
 // loadClash reads the team's saved matches from the Clash helper and scouts one (the newest, or id).
+// id "@client" shows the League client's scouting instead.
 func (a *App) loadClash(id string) {
 	a.mu.Lock()
+	if id != "" {
+		a.cl.Picked = true
+	}
+	if id == "@client" {
+		a.cl.Show = "@client"
+		a.mu.Unlock()
+		a.forcePush()
+		return
+	}
+	if id != "" {
+		a.cl.Show = id
+	}
 	a.cl.seq++
 	seq := a.cl.seq
 	a.cl.Loading, a.cl.Err = true, ""
@@ -378,7 +424,9 @@ func (a *App) loadClash(id string) {
 		return
 	}
 	if len(list) == 0 {
-		finish(func(c *clashState) { c.Matches, c.Scout, c.Err = nil, nil, "No saved matches in the Clash helper yet." })
+		finish(func(c *clashState) {
+			c.Matches, c.Helper, c.Err = nil, nil, "No saved matches in the Clash helper yet."
+		})
 		return
 	}
 	if id == "" {
@@ -390,7 +438,61 @@ func (a *App) loadClash(id string) {
 		return
 	}
 	sc := core.ScoutTeam(m, a.loadTier())
-	finish(func(c *clashState) { c.Matches, c.Scout = list, &sc })
+	finish(func(c *clashState) { c.Matches, c.Helper = list, &sc })
+}
+
+// loadClientClash reads this round's opponent from the League client's own Clash data (Clash games only).
+// The client's raw answers go to the log, so the real formats can be checked after a Clash.
+func (a *App) loadClientClash() {
+	a.mu.Lock()
+	lcu, clash := a.lcu, a.clash
+	a.cl.ClientLoading, a.cl.ClientErr = true, ""
+	a.mu.Unlock()
+	if lcu == nil || !clash {
+		return
+	}
+	a.push()
+	var champs map[int]core.Champion
+	for i := 0; i < 20 && champs == nil; i++ { // the champion list arrives with the first session poll
+		a.mu.Lock()
+		champs = a.champs
+		a.mu.Unlock()
+		if champs == nil {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	logged := map[string]bool{}
+	raw := func(path string, body []byte, err error) {
+		if logged[path] {
+			return
+		}
+		logged[path] = true
+		if len(body) > 8000 {
+			body = append(body[:8000], []byte("…")...)
+		}
+		log.Printf("clash raw %s err=%v: %s", path, err, body)
+	}
+	m, pos, err := lcu.ClashFromClient(lcu.CurrentPuuid(), champs, raw)
+	var sc *core.Scout
+	if err == nil {
+		s := core.ScoutTeam(m, a.loadTier())
+		sc = &s
+		log.Printf("clash: scouted %s from the client", m.Name)
+	} else {
+		log.Printf("clash: no scouting from the client: %v", err)
+	}
+	a.mu.Lock()
+	if a.clash {
+		a.cl.ClientLoading, a.cl.Client, a.posOf = false, sc, pos
+		if err != nil {
+			a.cl.ClientErr = err.Error()
+		}
+		if sc != nil && !a.cl.Picked {
+			a.cl.Show = "@client"
+		}
+	}
+	a.mu.Unlock()
+	a.forcePush()
 }
 
 func (a *App) retry() {
@@ -420,7 +522,7 @@ type view struct {
 	Pref    core.Pref       `json:"remembered"`
 	Applied core.Pref       `json:"applied"`
 	Matchup *core.Matchup   `json:"matchup,omitempty"`
-	Clash   *clashState     `json:"clash,omitempty"`
+	Clash   *clashView      `json:"clash,omitempty"`
 }
 
 func (a *App) roleOf() string {
@@ -443,17 +545,18 @@ func (a *App) view() view {
 		v.Runes, v.Spells = core.Order(a.build, v.Pref)
 		v.Applied = a.applied[a.prefKey()]
 		var en []core.Champion
-		for _, id := range a.enemies {
-			if ch, ok := a.champs[id]; ok {
+		var known []string
+		for _, e := range a.enemies {
+			if ch, ok := a.champs[e.ChampionID]; ok {
 				en = append(en, ch)
+				known = append(known, a.posOf[e.Puuid])
 			}
 		}
-		m := core.LaneMatchup(a.build, a.roleOf(), en, a.tier)
+		m := core.LaneMatchup(a.build, a.roleOf(), en, known, a.tier)
 		v.Matchup = &m
 	}
 	if a.clash && a.state != "unsupported" {
-		c := a.cl
-		v.Clash = &c
+		v.Clash = a.cl.view()
 	}
 	return v
 }
@@ -608,6 +711,7 @@ func (a *App) uiLoop() {
 	_ = w.Bind("openBuild", func() { a.openBuild() })
 	_ = w.Bind("retry", func() { go a.retry() })
 	_ = w.Bind("clashMatch", func(id string) { go a.loadClash(id) })
+	_ = w.Bind("clashClient", func() { go a.loadClientClash() })
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	w.SetHtml(panelPage())
 	a.mu.Lock()

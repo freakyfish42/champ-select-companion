@@ -14,9 +14,12 @@ and role (EUW, Emerald+). Click **Apply** and it sets them in the client. Nothin
 - It remembers what you picked per champion and role, and shows that first next time.
 - **Lane matchup**: once the enemy laner is picked, the panel guesses who's in your lane (from the site's role stats)
   and shows your win rate against them, with how many games that's based on.
-- **Clash scouting** (Clash games only): reads the team's saved matches from the Clash helper (clash.lømsland.no,
-  newest first, switchable) and shows each enemy's role (saved, or guessed with a ?), their three most played champions
-  in that role, and three ban ideas.
+- **Clash scouting** (only when the client says the game is Clash): reads this round's opponent from the League client's
+  own Clash data (your team → bracket → the other team's roster with their registered positions; their champions from the
+  client's scouting data, or else their last 20 games), and shows each enemy's role, three most played champions and
+  three ban ideas. The team's saved matches from the Clash helper (clash.lømsland.no) are in the same list, and are
+  used when the client has nothing yet. In Clash the lane matchup uses the registered positions instead of guessing.
+  The client's Clash endpoints are undocumented, so during a Clash every raw answer is written to `log.txt`.
 - No panel in ARAM, Arena and other modes (the stats are ranked Summoner's Rift).
 - Updates itself from this repo's releases, never during champ select or a game.
 

@@ -138,15 +138,18 @@ function matchup(m){
 
 function clash(c){
   if(!c)return '';
-  const sc=c.scout,opts=(c.matches||[]).map(x=>`<option value="${esc(x.id)}"${sc&&sc.matchId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
-  let h=`<h3>Clash scouting</h3><div class="row cl">${opts?`<select id="clsel" aria-label="Saved match">${opts}</select>`:''}<button class="x2" id="clref">${c.loading?'Loading…':'Refresh'}</button></div>`;
+  const sc=c.scout,show=c.show||'';
+  const opts=(c.hasClient||c.clientLoading?`<option value="@client"${show==='@client'?' selected':''}>This round · from the League client${c.clientLoading&&!c.hasClient?' (loading…)':''}</option>`:'')
+    +(c.matches||[]).map(x=>`<option value="${esc(x.id)}"${show===x.id?' selected':''}>Saved: ${esc(x.name)}</option>`).join('');
+  let h=`<h3>Clash scouting</h3><div class="row cl">${opts?`<select id="clsel" aria-label="What to scout">${opts}</select>`:''}<button class="x2" id="clref">${c.loading||c.clientLoading?'Loading…':'Refresh'}</button></div>`;
+  if(!c.hasClient&&!c.clientLoading&&c.clientErr)h+=`<div class="msg">League client: ${esc(c.clientErr)}. Showing the Clash helper instead.</div>`;
   if(c.err)h+=`<div class="msg err">${esc(c.err)}</div><div class="msg"><a id="clopen" style="color:var(--gold);cursor:pointer">Open the Clash helper ↗</a></div>`;
-  if(!sc)return h+(c.loading?'<div class="msg">Reading the Clash helper…</div>':'');
+  if(!sc)return h+(c.loading||c.clientLoading?'<div class="msg">Reading the scouting data…</div>':'');
   const ci=x=>x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):'';
   h+=(sc.players||[]).map(p=>`<div class="en"><div class="who"><span class="rl">${esc(RN[p.role]||'?')}${p.guessed?'?':''}</span><b title="${esc(p.name)}">${esc(p.name)}</b></div>
     <div class="cc">${(p.champs||[]).map(x=>`<span>${ci(x)}${esc(x.name)} <small>${num(x.games)} games · ${pct(x.wr)}</small></span>`).join('')||'<small style="color:var(--mute)">No champions saved</small>'}</div></div>`).join('');
   if((sc.bans||[]).length)h+=`<h3>Ban ideas</h3><div class="bans">${sc.bans.map(x=>`<div>${ci(x)}<span>${esc(x.name)} <small>${esc(x.player)} · ${num(x.games)} games · ${pct(x.wr)}</small></span></div>`).join('')}</div>`;
-  return h+'<div class="msg">From the team\'s Clash helper. A ? after the role means it was guessed from their champions.</div>'}
+  return h+`<div class="msg">${show==='@client'?'From the League client\'s Clash data. Roles are the ones they registered; a ? means they registered as fill.':'From the team\'s Clash helper. A ? after the role means it was guessed from their champions.'}</div>`}
 
 function render(v){
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
@@ -166,7 +169,7 @@ function render(v){
 function bindClash(){
   const s=$('clsel'),r=$('clref'),o=$('clopen');
   if(s)s.onchange=()=>window.clashMatch&&clashMatch(s.value);
-  if(r)r.onclick=()=>window.clashMatch&&clashMatch(s?s.value:'');
+  if(r)r.onclick=()=>{const v=s?s.value:'';if(v==='@client'){window.clashClient&&clashClient()}else{window.clashMatch&&clashMatch(v)}};
   if(o)o.onclick=()=>window.openClash&&openClash();
 }
 window.render=render;

@@ -59,26 +59,30 @@ func TestLaneMatchup(t *testing.T) {
 		}
 		return out
 	}
-	m := LaneMatchup(b, "mid", en("Thresh", "Syndra"), tl)
+	m := LaneMatchup(b, "mid", en("Thresh", "Syndra"), nil, tl)
 	if m.State != "ok" || m.Opp != "Syndra" || *m.WR != 0.55 || m.Play != 1600 || !m.Sure {
 		t.Fatalf("%+v", m)
 	}
 	// Yasuo with a sure mid laner on their team plays top: no mid yet
-	if m := LaneMatchup(b, "mid", en("Yasuo", "Ahri"), tl); m.Opp != "Ahri" || m.State != "nodata" {
+	if m := LaneMatchup(b, "mid", en("Yasuo", "Ahri"), nil, tl); m.Opp != "Ahri" || m.State != "nodata" {
 		t.Fatalf("%+v", m)
 	}
-	if m := LaneMatchup(b, "mid", en("Thresh", "Jinx"), tl); m.State != "waiting" || m.Opp != "" {
+	if m := LaneMatchup(b, "mid", en("Thresh", "Jinx"), nil, tl); m.State != "waiting" || m.Opp != "" {
 		t.Fatalf("%+v", m)
 	}
-	if m := LaneMatchup(b, "", en("Syndra"), tl); m.State != "waiting" {
+	if m := LaneMatchup(b, "", en("Syndra"), nil, tl); m.State != "waiting" {
 		t.Fatalf("%+v", m)
 	}
-	m = LaneMatchup(b, "mid", en("Yasuo"), tl)
+	m = LaneMatchup(b, "mid", en("Yasuo"), nil, tl)
 	if m.Opp != "Yasuo" || !m.Sure || *m.WR != 0.47 {
 		t.Fatalf("Yasuo (75%% mid) alone: %+v", m)
 	}
+	// Clash: the client says who plays where, so Yasuo registered as mid is sure, even next to Ahri
+	if m := LaneMatchup(b, "mid", en("Yasuo", "Ahri"), []string{"mid", ""}, tl); m.Opp != "Yasuo" || !m.Sure || m.State != "ok" {
+		t.Fatalf("%+v", m)
+	}
 	// with Darius in top, Jax is their jungler, but only a guess
-	if m := LaneMatchup(&Build{}, "jungle", en("Jax", "Darius"), tl); m.Opp != "Jax" || m.Sure || m.State != "nodata" {
+	if m := LaneMatchup(&Build{}, "jungle", en("Jax", "Darius"), nil, tl); m.Opp != "Jax" || m.Sure || m.State != "nodata" {
 		t.Fatalf("%+v", m)
 	}
 }

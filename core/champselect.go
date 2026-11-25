@@ -14,6 +14,7 @@ type Member struct {
 	Position   string `json:"assignedPosition"`
 	Spell1     int    `json:"spell1Id"`
 	Spell2     int    `json:"spell2Id"`
+	Puuid      string `json:"puuid"` // shown for the other team in some queues (Clash), else ""
 }
 
 type Action struct {
@@ -67,15 +68,21 @@ func (s Session) Mine() Pick {
 	return p
 }
 
+// EnemyPick is a champion the other team has shown, and who picked it (when the client says).
+type EnemyPick struct {
+	ChampionID int
+	Puuid      string
+}
+
 // EnemyPicks are the champions the other team has locked in or shown so far.
-func (s Session) EnemyPicks() []int {
-	var ids []int
+func (s Session) EnemyPicks() []EnemyPick {
+	var out []EnemyPick
 	for _, m := range s.TheirTeam {
 		if m.ChampionID > 0 {
-			ids = append(ids, m.ChampionID)
+			out = append(out, EnemyPick{m.ChampionID, m.Puuid})
 		}
 	}
-	return ids
+	return out
 }
 
 // RoleFromPosition maps the client's assigned positions to the site's role names.

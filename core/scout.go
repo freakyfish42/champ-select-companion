@@ -158,7 +158,8 @@ type Matchup struct {
 }
 
 // LaneMatchup guesses which enemy pick plays myRole and looks up this build's win rate against it.
-func LaneMatchup(b *Build, myRole string, enemies []Champion, t *TierList) Matchup {
+// known[i] is enemies[i]'s role when it's known (Clash positions), else "".
+func LaneMatchup(b *Build, myRole string, enemies []Champion, known []string, t *TierList) Matchup {
 	m := Matchup{State: "waiting", Role: myRole}
 	if myRole == "" || t == nil || len(enemies) == 0 {
 		return m
@@ -172,14 +173,16 @@ func LaneMatchup(b *Build, myRole string, enemies []Champion, t *TierList) Match
 			w[i][r] = t.Share(e.Alias, role)
 		}
 	}
-	roles := AssignRoles(w, nil)
+	fixed := make([]string, len(enemies))
+	copy(fixed, known)
+	roles := AssignRoles(w, fixed)
 	for i, r := range roles {
 		if r != myRole {
 			continue
 		}
 		e := enemies[i]
 		m.Opp, m.OppID, m.State = e.Name, e.Alias, "nodata"
-		m.Sure = t.Share(e.Alias, r) >= 0.6
+		m.Sure = fixed[i] != "" || t.Share(e.Alias, r) >= 0.6
 		for _, v := range b.Vs {
 			if Norm(v.ID) == Norm(e.Alias) || Norm(v.Name) == Norm(e.Name) {
 				wr := v.WR
@@ -334,6 +337,11 @@ func ScoutTeam(m *ClashMatch, t *TierList) Scout {
 		}
 	}
 	roles := AssignRoles(w, fixed)
+	for i := range them {
+		if fixed[i] == "" && w[i] == ([5]float64{}) {
+			roles[i] = "" // nothing to guess from
+		}
+	}
 	type cand struct {
 		ScoutBan
 		score float64
