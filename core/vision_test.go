@@ -267,6 +267,16 @@ func TestVisionClashOnlyInClash(t *testing.T) {
 	if strings.Count(s, `go a.loadClash("")`) != 1 {
 		t.Error("Clash helper scouting is started from more than one place")
 	}
+	// completely hidden until Clash: the panel gets Clash data only in a Clash champ select
+	if !strings.Contains(s, `if a.clash && a.state != "unsupported" {
+		v.Clash = a.cl.view()`) || strings.Count(s, "v.Clash =") != 1 {
+		t.Error("the panel must only get Clash data in a Clash game")
+	}
+	// nothing to choose: the app picks the source itself, and the panel has no drop-down
+	p, _ := os.ReadFile("../panel.html")
+	if strings.Contains(string(p), "<select") || strings.Contains(s, `w.Bind("clashMatch"`) {
+		t.Error("the panel must not have a selector: the app detects the queue and the Clash source itself")
+	}
 }
 
 // Vision 6: the numbers are EUW Emerald+ from build.lømsland.no, and the panel says so.

@@ -12,7 +12,7 @@ Change a vision test only when the owner has asked for that behaviour to change.
 | 3b | The panel beside the client doesn't show the name either. | `TestVisionNoAppNameInThePanel` |
 | 3c | The app has a neutral name (Champ Select Companion): no "lømsland" in the tray, messages, window titles, errors or file and folder names. | `TestVisionNeutralName` |
 | 4 | Your own rune pages are never changed unless you pick one to replace; with every slot full it asks first. | `TestVisionYourRunePagesAreSafe` |
-| 5 | Clash mode (scouting) only when the client says the game is Clash; the panel only on Summoner's Rift. | `TestVisionClashOnlyInClash` |
+| 5 | Clash mode (scouting) only when the client says the game is Clash, and completely hidden until then; the panel only on Summoner's Rift. The app detects the queue itself and the panel has no selector. | `TestVisionClashOnlyInClash` |
 | 6 | The numbers are EUW Emerald+ from build.lømsland.no, and the panel says so. | `TestVisionEUWFromTheSite` |
 | 7 | Scouting only reads the team's Clash helper; it never saves, deletes or sends the team password. | `TestVisionClashHelperReadOnly` |
 | 8 | Updates only install when signed with the owner's key, checked before anything is written. | `TestVisionUpdatesNeedTheOwnersSignature` |

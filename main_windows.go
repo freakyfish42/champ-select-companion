@@ -73,6 +73,7 @@ type App struct {
 	inSelect bool
 	phase    string
 	mode     string
+	queue    string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
 	clash    bool
 	enemies  []core.EnemyPick     // champions the other team has shown
 	posOf    map[string]string    // Clash: the opponents' registered positions, by puuid
@@ -105,11 +106,8 @@ type App struct {
 
 // clashState: scouting from the League client (this round's opponent) and from the Clash helper's saved matches.
 type clashState struct {
-	Matches       []core.ClashMatchInfo
-	Helper        *core.Scout
-	Client        *core.Scout
-	Show          string // "@client" or a saved match id
-	Picked        bool   // the player chose what to show
+	Helper        *core.Scout // the newest saved match in the Clash helper (the fallback)
+	Client        *core.Scout // this round's opponent from the League client (preferred)
 	Loading       bool
 	Err           string
 	ClientLoading bool
@@ -117,26 +115,24 @@ type clashState struct {
 	seq           int
 }
 
+// clashView: what the panel shows. There is nothing to choose: the League client's data when it has
+// this round's opponent, otherwise the newest match saved in the Clash helper, named so you can tell.
 type clashView struct {
-	Matches       []core.ClashMatchInfo `json:"matches"`
-	Scout         *core.Scout           `json:"scout,omitempty"`
-	Show          string                `json:"show"`
-	HasClient     bool                  `json:"hasClient"`
-	Loading       bool                  `json:"loading"`
-	Err           string                `json:"err,omitempty"`
-	ClientLoading bool                  `json:"clientLoading"`
-	ClientErr     string                `json:"clientErr,omitempty"`
+	Scout   *core.Scout `json:"scout,omitempty"`
+	Source  string      `json:"source"` // "client", "helper" or ""
+	Loading bool        `json:"loading"`
+	Err     string      `json:"err,omitempty"`
 }
 
 func (c clashState) view() *clashView {
-	v := &clashView{Matches: c.Matches, Show: c.Show, HasClient: c.Client != nil, Loading: c.Loading, ClientLoading: c.ClientLoading, ClientErr: c.ClientErr}
-	if c.Show == "@client" && c.Client != nil {
-		v.Scout = c.Client
-	} else {
-		v.Scout, v.Err = c.Helper, c.Err
-		if c.Helper != nil {
-			v.Show = c.Helper.MatchID
-		}
+	v := &clashView{Loading: c.Loading || c.ClientLoading}
+	switch {
+	case c.Client != nil:
+		v.Scout, v.Source = c.Client, "client"
+	case c.Helper != nil:
+		v.Scout, v.Source = c.Helper, "helper"
+	case !v.Loading && c.Err != "":
+		v.Err = c.Err
 	}
 	return v
 }
@@ -296,14 +292,14 @@ func (a *App) enterSelect(g core.Game) {
 	mode, plan := g.Mode, core.PlanFor(g)
 	a.mu.Lock()
 	a.gen++
-	a.inSelect, a.phase, a.mode, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, plan.ClashClient, nil, nil
+	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
 	a.cl = clashState{}
 	a.hidden, a.dragged = false, false
 	a.applied = map[string]core.Pref{}
 	a.key, a.build, a.state, a.msg = "", nil, "waiting", ""
 	show := a.cfg.ShowPanel
 	a.mu.Unlock()
-	log.Printf("champ select (%s, clash=%v)", mode, plan.ClashClient)
+	log.Printf("champ select (%s, %s, clash=%v)", g.Queue, mode, plan.ClashClient)
 	go a.loadTier()
 	if plan.ClashClient { // Clash mode only when the client says this is a Clash game (core.PlanFor)
 		go a.loadClientClash()
@@ -398,20 +394,9 @@ func (a *App) loadTier() *core.TierList {
 
 // loadClash reads the team's saved matches from the Clash helper and scouts one (the newest, or id).
 // id "@client" shows the League client's scouting instead.
+// loadClash reads a saved match from the Clash helper: the newest one when id is "".
 func (a *App) loadClash(id string) {
 	a.mu.Lock()
-	if id != "" {
-		a.cl.Picked = true
-	}
-	if id == "@client" {
-		a.cl.Show = "@client"
-		a.mu.Unlock()
-		a.forcePush()
-		return
-	}
-	if id != "" {
-		a.cl.Show = id
-	}
 	if !a.clash {
 		a.mu.Unlock()
 		return
@@ -437,7 +422,7 @@ func (a *App) loadClash(id string) {
 	}
 	if len(list) == 0 {
 		finish(func(c *clashState) {
-			c.Matches, c.Helper, c.Err = nil, nil, "No saved matches in the Clash helper yet."
+			c.Helper, c.Err = nil, "No scouting yet: the League client had none, and nothing is saved in the Clash helper."
 		})
 		return
 	}
@@ -446,11 +431,11 @@ func (a *App) loadClash(id string) {
 	}
 	m, err := core.GetClashMatch(a.web, core.ClashURL, id)
 	if err != nil {
-		finish(func(c *clashState) { c.Matches, c.Err = list, err.Error() })
+		finish(func(c *clashState) { c.Err = err.Error() })
 		return
 	}
 	sc := core.ScoutTeam(m, a.loadTier())
-	finish(func(c *clashState) { c.Matches, c.Helper = list, &sc })
+	finish(func(c *clashState) { c.Helper = &sc })
 }
 
 // loadClientClash reads this round's opponent from the League client's own Clash data (Clash games only).
@@ -502,12 +487,15 @@ func (a *App) loadClientClash() {
 		} else {
 			a.cl.Client, a.posOf = sc, pos
 		}
-		if sc != nil && !a.cl.Picked {
-			a.cl.Show = "@client"
-		}
 	}
 	a.mu.Unlock()
 	a.forcePush()
+}
+
+// refreshClash reads both sources again (the panel's Refresh button; does nothing outside Clash).
+func (a *App) refreshClash() {
+	go a.loadClientClash()
+	a.loadClash("")
 }
 
 // remember keeps a fetched build (caller holds a.mu). The cache is emptied when it gets big.
@@ -534,6 +522,7 @@ type view struct {
 	State   string          `json:"state"`
 	Msg     string          `json:"msg"`
 	Mode    string          `json:"mode"`
+	Queue   string          `json:"queue"`
 	Name    string          `json:"name"`
 	Alias   string          `json:"alias"`
 	Role    string          `json:"role"`
@@ -560,7 +549,7 @@ func (a *App) roleOf() string {
 func (a *App) prefKey() string { return core.PrefKey(a.champ.Alias, a.roleOf()) }
 
 func (a *App) view() view {
-	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, State: a.state, Msg: a.msg, Mode: a.mode, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
+	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
 		v.Name, v.Alias = "", ""
 	}
@@ -772,8 +761,7 @@ func (a *App) uiLoop() {
 	})
 	_ = w.Bind("openBuild", func() { a.openBuild() })
 	_ = w.Bind("retry", func() { go a.retry() })
-	_ = w.Bind("clashMatch", func(id string) { go a.loadClash(id) })
-	_ = w.Bind("clashClient", func() { go a.loadClientClash() })
+	_ = w.Bind("clashRefresh", func() { go a.refreshClash() })
 	_ = w.Bind("openClash", func() { openURL(core.ClashURL + "/") })
 	w.SetHtml(panelPage())
 	a.mu.Lock()

@@ -119,6 +119,32 @@ func (c *Client) Phase() (string, error) {
 type Game struct {
 	Mode  string
 	Clash bool
+	Queue string // the queue's name as players know it, e.g. "Ranked Solo/Duo"
+}
+
+var queueNames = map[int]string{
+	400: "Normal Draft", 420: "Ranked Solo/Duo", 430: "Normal Blind", 440: "Ranked Flex", 480: "Swiftplay", 490: "Quickplay",
+	700: "Clash", 450: "ARAM", 1700: "Arena", 1710: "Arena", 900: "ARURF", 1900: "URF", 1020: "One for All",
+	830: "Co-op vs AI", 840: "Co-op vs AI", 850: "Co-op vs AI", 870: "Co-op vs AI", 880: "Co-op vs AI", 890: "Co-op vs AI",
+}
+
+// QueueName names a queue: from Riot's queue id when it's a known one, else the client's own description.
+func QueueName(id int, desc, mode string, clash bool) string {
+	switch {
+	case clash && mode == "CLASSIC":
+		return "Clash"
+	case queueNames[id] != "":
+		return queueNames[id]
+	case id <= 0 && mode != "":
+		return "Custom game"
+	case strings.TrimSpace(desc) != "":
+		d := strings.TrimSpace(desc)
+		if len([]rune(d)) > 28 {
+			d = string([]rune(d)[:28]) + "…"
+		}
+		return d
+	}
+	return ""
 }
 
 func (c *Client) Game() (Game, error) {
@@ -126,9 +152,10 @@ func (c *Client) Game() (Game, error) {
 		Map      struct{ GameMode string } `json:"map"`
 		GameData struct {
 			Queue struct {
-				ID       int    `json:"id"`
-				GameMode string `json:"gameMode"`
-				Type     string `json:"type"`
+				ID          int    `json:"id"`
+				GameMode    string `json:"gameMode"`
+				Type        string `json:"type"`
+				Description string `json:"description"`
 			} `json:"queue"`
 		} `json:"gameData"`
 	}
@@ -140,6 +167,7 @@ func (c *Client) Game() (Game, error) {
 	if g.Mode == "" {
 		g.Mode = s.Map.GameMode
 	}
+	g.Queue = QueueName(q.ID, q.Description, g.Mode, g.Clash)
 	return g, nil
 }
 

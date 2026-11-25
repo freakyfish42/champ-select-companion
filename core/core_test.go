@@ -472,3 +472,28 @@ func TestSignedBy(t *testing.T) {
 		t.Error("a test certificate passed as Riot's")
 	}
 }
+
+func TestQueueName(t *testing.T) {
+	cases := []struct {
+		id    int
+		desc  string
+		mode  string
+		clash bool
+		want  string
+	}{
+		{420, "5v5 Ranked Solo games", "CLASSIC", false, "Ranked Solo/Duo"},
+		{440, "", "CLASSIC", false, "Ranked Flex"},
+		{400, "", "CLASSIC", false, "Normal Draft"},
+		{700, "", "CLASSIC", true, "Clash"},
+		{0, "", "CLASSIC", true, "Clash"}, // the client says Clash: trust it
+		{450, "", "ARAM", false, "ARAM"},
+		{-1, "", "CLASSIC", false, "Custom game"},
+		{9999, "Some new event queue with a very long name", "CLASSIC", false, "Some new event queue with a …"},
+		{9999, "", "", false, ""},
+	}
+	for _, c := range cases {
+		if got := QueueName(c.id, c.desc, c.mode, c.clash); got != c.want {
+			t.Errorf("%+v: got %q", c, got)
+		}
+	}
+}

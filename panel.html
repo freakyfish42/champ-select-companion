@@ -96,9 +96,10 @@ function head(v){
   $('cimg').hidden=!(id&&ver);if(id&&ver)$('cimg').src=`${DD}${ver}/img/champion/${id}.png`;
   $('cname').textContent=v.name||'Champ select';
   let sub='';
-  if(v.state==='unsupported')sub='Champ select';
-  else if(v.name)sub=[RN[v.role]||'',v.locked?'Locked in':'Hovering'].filter(Boolean).join(' · ');
-  else sub='Champ select';
+  /* the queue comes from the League client: the panel just says which one it sees */
+  if(v.state==='unsupported')sub=v.queue||'Champ select';
+  else if(v.name)sub=[v.queue||'',RN[v.role]||'',v.locked?'Locked in':'Hovering'].filter(Boolean).join(' · ');
+  else sub=v.queue||'Champ select';
   $('csub').textContent=sub;
   $('test').hidden=!v.test;
   $('ver').textContent='EUW · Emerald+';$('ver').title='App '+(v.version||'');
@@ -147,20 +148,23 @@ function counters(v){
 function age(b){const t=Number(b&&(b.opggAt||b.updated));if(!t)return '';const m=Math.max(0,Math.round((Date.now()-t)/60000));
   return m<90?`updated ${m} min ago`:m<48*60?`updated ${Math.round(m/60)} h ago`:`updated ${Math.round(m/1440)} days ago`}
 
+/* Clash scouting: only in Clash games (the app sends no clash data otherwise), and nothing to choose */
 function clash(c){
   if(!c)return '';
-  const sc=c.scout,show=c.show||'';
-  const opts=(c.hasClient||c.clientLoading?`<option value="@client"${show==='@client'?' selected':''}>This round · from the League client${c.clientLoading&&!c.hasClient?' (loading…)':''}</option>`:'')
-    +(c.matches||[]).map(x=>`<option value="${esc(x.id)}"${show===x.id?' selected':''}>Saved: ${esc(x.name)}</option>`).join('');
-  let h=`<h3>Clash scouting</h3><div class="row cl">${opts?`<select id="clsel" aria-label="What to scout">${opts}</select>`:''}<button class="x2" id="clref">${c.loading||c.clientLoading?'Loading…':'Refresh'}</button></div>`;
-  if(!c.hasClient&&!c.clientLoading&&c.clientErr)h+=`<div class="msg">League client: ${esc(c.clientErr)}. Showing the Clash helper instead.</div>`;
-  if(c.err)h+=`<div class="msg err">${esc(c.err)}</div><div class="msg"><a id="clopen" style="color:var(--gold);cursor:pointer">Open the Clash helper ↗</a></div>`;
-  if(!sc)return h+(c.loading||c.clientLoading?'<div class="msg">Reading the scouting data…</div>':'');
+  const sc=c.scout;
+  let h=`<h3>Clash scouting<button class="x2" id="clref" style="float:right">${c.loading?'Loading…':'Refresh'}</button></h3>`;
+  if(!sc){
+    if(c.err)return h+`<div class="msg err">${esc(c.err)}</div><div class="msg"><a id="clopen" style="color:var(--gold);cursor:pointer">Open the Clash helper ↗</a></div>`;
+    return h+'<div class="msg">Reading this round\'s opponent…</div>';
+  }
+  h+=c.source==='client'?'<div class="msg">This round\'s opponent, from the League client. A ? after the role means they registered as fill.</div>'
+    :`<div class="msg">From the Clash helper: <b>${esc(sc.match||'saved match')}</b>${sc.updated?' · saved '+esc(ago(sc.updated)):''}. A ? after the role means it was guessed from their champions.</div>`;
   const ci=x=>x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):'';
   h+=(sc.players||[]).map(p=>`<div class="en"><div class="who"><span class="rl">${esc(RN[p.role]||'?')}${p.guessed?'?':''}</span><b title="${esc(p.name)}">${esc(p.name)}</b></div>
     <div class="cc">${(p.champs||[]).map(x=>`<span>${ci(x)}${esc(x.name)} <small>${num(x.games)} games · ${pct(x.wr)}</small></span>`).join('')||'<small style="color:var(--mute)">No champions saved</small>'}</div></div>`).join('');
   if((sc.bans||[]).length)h+=`<h3>Ban ideas</h3><div class="bans">${sc.bans.map(x=>`<div>${ci(x)}<span>${esc(x.name)} <small>${esc(x.player)} · ${num(x.games)} games · ${pct(x.wr)}</small></span></div>`).join('')}</div>`;
-  return h+`<div class="msg">${show==='@client'?'From the League client\'s Clash data. Roles are the ones they registered; a ? means they registered as fill.':'From the team\'s Clash helper. A ? after the role means it was guessed from their champions.'}</div>`}
+  return h}
+function ago(t){const m=Math.max(0,Math.round((Date.now()-Number(t))/60000));return m<90?`${m} min ago`:m<48*60?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} days ago`}
 
 function render(v){
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
@@ -178,9 +182,8 @@ function render(v){
   bindClash();
 }
 function bindClash(){
-  const s=$('clsel'),r=$('clref'),o=$('clopen');
-  if(s)s.onchange=()=>window.clashMatch&&clashMatch(s.value);
-  if(r)r.onclick=()=>{const v=s?s.value:'';if(v==='@client'){window.clashClient&&clashClient()}else{window.clashMatch&&clashMatch(v)}};
+  const r=$('clref'),o=$('clopen');
+  if(r)r.onclick=()=>window.clashRefresh&&clashRefresh();
   if(o)o.onclick=()=>window.openClash&&openClash();
 }
 window.render=render;
