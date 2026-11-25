@@ -122,7 +122,13 @@ type release struct {
 	} `json:"assets"`
 }
 
+var updating sync.Mutex
+
 func (a *App) checkUpdate(manual bool) {
+	if !updating.TryLock() {
+		return // a check is already running
+	}
+	defer updating.Unlock()
 	say := func(s string) {
 		log.Printf("update: %s", s)
 		if manual {

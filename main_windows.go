@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -46,7 +47,10 @@ func panelPage() string {
 		}
 		css += "@font-face{font-family:" + f.family + ";font-weight:" + f.weight + ";font-display:block;src:url(data:font/woff2;base64," + base64.StdEncoding.EncodeToString(b) + ") format('woff2')}\n"
 	}
-	return strings.Replace(panelHTML, "/*FONTS*/", css, 1)
+	nonce := make([]byte, 18)
+	_, _ = rand.Read(nonce)
+	page := strings.Replace(panelHTML, "/*FONTS*/", css, 1)
+	return strings.ReplaceAll(page, "__NONCE__", base64.RawURLEncoding.EncodeToString(nonce))
 }
 
 const panelW, panelH = 300, 700
@@ -86,7 +90,6 @@ type App struct {
 	hwnd     uintptr
 	uiWanted chan struct{}
 	uiOnce   sync.Once
-	uiBroken bool
 }
 
 type cached struct {
@@ -107,12 +110,13 @@ func main() {
 		return
 	}
 	mutex, ok := singleInstance()
-	for i := 0; !ok && (strings.Contains(args, "--updated") || strings.Contains(args, "--installed")) && i < 30; i++ {
+	waits := strings.Contains(args, "--updated") || strings.Contains(args, "--installed") || strings.Contains(args, "--restart")
+	for i := 0; !ok && waits && i < 30; i++ {
 		time.Sleep(500 * time.Millisecond) // the old version is closing
 		mutex, ok = singleInstance()
 	}
 	if !ok {
-		if !strings.Contains(args, "--autostart") {
+		if !strings.Contains(args, "--autostart") && !waits {
 			messageBox("lømsland companion is already running. Look for its icon in the tray, next to the clock.", mbIconInfo)
 		}
 		return
@@ -329,6 +333,7 @@ type view struct {
 	Alias   string          `json:"alias"`
 	Role    string          `json:"role"`
 	Locked  bool            `json:"locked"`
+	Key     string          `json:"key"` // which build is on screen; clicks send it back
 	Build   json.RawMessage `json:"build,omitempty"`
 	Runes   []int           `json:"runeOrder"`
 	Spells  []int           `json:"spellOrder"`
@@ -346,7 +351,7 @@ func (a *App) roleOf() string {
 func (a *App) prefKey() string { return core.PrefKey(a.champ.Alias, a.roleOf()) }
 
 func (a *App) view() view {
-	v := view{Version: version, Test: a.cfg.TestMode, State: a.state, Msg: a.msg, Mode: a.mode, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
+	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, State: a.state, Msg: a.msg, Mode: a.mode, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
 		v.Name, v.Alias = "", ""
 	}
@@ -383,22 +388,28 @@ func (a *App) forcePush() {
 
 // ---- clicks in the panel ----
 
-func (a *App) applyRunes(i, replaceID int) core.Result {
+// stale: the panel showed another champion's build than the one now picked (hovers change fast)
+const stale = "You just changed champion. Check the panel and click again."
+
+func (a *App) applyRunes(shown string, i, replaceID int) core.Result {
 	a.mu.Lock()
-	lcu, b, test := a.lcu, a.build, a.cfg.TestMode
+	lcu, b, test, cur := a.lcu, a.build, a.cfg.TestMode, a.key
 	key, name := a.prefKey(), core.PageName(a.champ.Name, a.roleOf())
 	a.mu.Unlock()
-	if lcu == nil || b == nil || i < 0 || i >= len(b.Runes) {
+	if lcu == nil {
 		return core.Result{Msg: "Not connected to League right now."}
+	}
+	if b == nil || shown != cur || i < 0 || i >= len(b.Runes) {
+		return core.Result{Msg: stale}
 	}
 	r := lcu.ApplyRunes(b.Runes[i], name, replaceID, test)
 	log.Printf("runes %s #%d: ok=%v %s", key, i, r.OK, r.Msg)
 	if r.OK && !test {
-		ks := b.Runes[i].Keystone()
-		a.prefs.Set(key, func(p *core.Pref) { p.Keystone = ks })
+		ks, sub := b.Runes[i].Keystone(), b.Runes[i].Secondary.ID
+		a.prefs.Set(key, func(p *core.Pref) { p.Keystone, p.Sub = ks, sub })
 		a.mu.Lock()
 		ap := a.applied[key]
-		ap.Keystone = ks
+		ap.Keystone, ap.Sub = ks, sub
 		a.applied[key] = ap
 		a.mu.Unlock()
 		go a.forcePush()
@@ -406,13 +417,16 @@ func (a *App) applyRunes(i, replaceID int) core.Result {
 	return r
 }
 
-func (a *App) applySpells(i int) core.Result {
+func (a *App) applySpells(shown string, i int) core.Result {
 	a.mu.Lock()
-	lcu, b, test, pick := a.lcu, a.build, a.cfg.TestMode, a.pick
+	lcu, b, test, pick, cur := a.lcu, a.build, a.cfg.TestMode, a.pick, a.key
 	key := a.prefKey()
 	a.mu.Unlock()
-	if lcu == nil || b == nil || i < 0 || i >= len(b.Summs) {
+	if lcu == nil {
 		return core.Result{Msg: "Not connected to League right now."}
+	}
+	if b == nil || shown != cur || i < 0 || i >= len(b.Summs) {
+		return core.Result{Msg: stale}
 	}
 	pair := b.Summs[i].IDs
 	names := map[int]string{}
@@ -454,9 +468,6 @@ func (a *App) uiLoop() {
 	<-a.uiWanted
 	if _, err := webviewloader.GetInstalledVersion(); err != nil {
 		log.Printf("WebView2 missing: %v", err)
-		a.mu.Lock()
-		a.uiBroken = true
-		a.mu.Unlock()
 		a.setStatus("Panel needs Microsoft Edge WebView2")
 		messageBox("The panel needs Microsoft Edge WebView2, which comes with Windows 10 and 11 but is missing here.\n\nInstall it from Microsoft (the “Evergreen Bootstrapper”), then restart lømsland companion.", mbIconWarning)
 		openURL("https://developer.microsoft.com/microsoft-edge/webview2/")
@@ -474,8 +485,8 @@ func (a *App) uiLoop() {
 	h := uintptr(w.Window())
 	makePanel(h)
 	_ = w.Bind("ready", func() { go a.forcePush() })
-	_ = w.Bind("applyRunes", func(i, replaceID int) core.Result { return a.applyRunes(i, replaceID) })
-	_ = w.Bind("applySpells", func(i int) core.Result { return a.applySpells(i) })
+	_ = w.Bind("applyRunes", func(key string, i, replaceID int) core.Result { return a.applyRunes(key, i, replaceID) })
+	_ = w.Bind("applySpells", func(key string, i int) core.Result { return a.applySpells(key, i) })
 	_ = w.Bind("drag", func() { startDrag(h) })
 	_ = w.Bind("hidePanel", func() {
 		a.mu.Lock()
@@ -493,15 +504,21 @@ func (a *App) uiLoop() {
 	w.Run()
 	// Run only returns if the window was closed (Alt+F4): start a fresh copy rather than run without a panel.
 	log.Printf("panel window closed; restarting")
-	relaunch("--autostart")
+	relaunch("--restart")
 	os.Exit(0)
 }
 
 // follow keeps the panel beside the client while champ select is on and the client (or the panel) is in front.
 func (a *App) follow(h uintptr) {
-	var last rect
+	var last, seen rect
 	shown := false
 	for {
+		if pr, ok := windowRect(h); ok && shown && pr != seen {
+			if seen != (rect{}) {
+				go a.forcePush()
+			}
+			seen = pr
+		}
 		a.mu.Lock()
 		want := a.inSelect && a.cfg.ShowPanel && !a.hidden && core.SupportedMode(a.mode) // no panel in ARAM, Arena, ...
 		dragged := a.dragged

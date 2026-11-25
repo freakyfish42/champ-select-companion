@@ -12,6 +12,7 @@ import (
 // Pref is the player's last choice for one champion and role.
 type Pref struct {
 	Keystone int   `json:"keystone,omitempty"`
+	Sub      int   `json:"sub,omitempty"` // secondary tree, to tell apart two pages with the same keystone
 	Spells   []int `json:"spells,omitempty"`
 }
 
@@ -75,7 +76,9 @@ func Order(b *Build, pr Pref) (runes, spells []int) {
 		return list
 	}
 	if pr.Keystone != 0 {
-		runes = front(runes, func(i int) bool { return b.Runes[i].Keystone() == pr.Keystone })
+		runes = front(runes, func(i int) bool {
+			return b.Runes[i].Keystone() == pr.Keystone && (pr.Sub == 0 || b.Runes[i].Secondary.ID == pr.Sub)
+		})
 	}
 	if len(pr.Spells) == 2 {
 		spells = front(spells, func(i int) bool { return samePair(b.Summs[i].IDs, pr.Spells) })

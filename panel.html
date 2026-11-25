@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://ddragon.leagueoflegends.com; style-src 'unsafe-inline'; font-src data:; script-src 'nonce-__NONCE__'; base-uri 'none'; form-action 'none'">
 <style>
 /*FONTS*/
 /* Same Retro look as build.lømsland.no: night blue, old gold, classic serif */
@@ -50,18 +51,24 @@ button.ap:disabled{opacity:.6;cursor:default}
 </style>
 </head>
 <body>
-<div class="top" id="top"><img id="cimg" alt="" hidden onerror="this.style.visibility='hidden'" onload="this.style.visibility=''"><div class="t"><b id="cname">lømsland</b><small id="csub">Waiting for champ select</small></div><button class="x" id="close" title="Hide for this champ select">×</button></div>
+<div class="top" id="top"><img id="cimg" alt="" hidden><div class="t"><b id="cname">lømsland</b><small id="csub">Waiting for champ select</small></div><button class="x" id="close" title="Hide for this champ select">×</button></div>
 <div class="test" id="test" hidden>Test mode: Apply only shows what it would change</div>
 <main id="main"><div class="empty">Waiting for champ select…</div></main>
 <div class="foot"><span id="ver">EUW · Emerald+</span><a id="full">Full build ↗</a></div>
-<script>
+<script nonce="__NONCE__">
 const DD='https://ddragon.leagueoflegends.com/cdn/';
 const RN={top:'Top',jungle:'Jungle',mid:'Mid',adc:'Bot',support:'Support'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct=x=>x==null?'–':(x*100).toFixed(1)+'%';
-const num=n=>(n||0).toLocaleString('en-GB');
+const num=n=>(Number(n)||0).toLocaleString('en-GB'); // numbers only: never let data through as markup
 const wr=x=>`<span class="${x==null?'':x>=.52?'hi':x<.48?'lo':''}">${pct(x)} win</span>`;
-const img=(src,cls='',t='')=>src?`<img class="${cls}" src="${esc(src)}" title="${esc(t)}" alt="" onerror="this.style.visibility='hidden'">`:'';
+const img=(src,cls='',t='')=>src?`<img class="${esc(cls)}" src="${esc(src)}" title="${esc(t)}" alt="">`:'';
+// broken images hide themselves (no inline handlers: the page's security policy forbids them)
+document.addEventListener('error',e=>{if(e.target&&e.target.tagName==='IMG')e.target.style.visibility='hidden'},true);
+document.addEventListener('load',e=>{if(e.target&&e.target.tagName==='IMG')e.target.style.visibility=''},true);
+// no browser shortcuts in the panel: reload, print, find, zoom, back
+document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(e.key==='F5'||e.key==='F3'||e.key==='F12'||e.key==='BrowserBack'||(e.altKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight'))||((e.ctrlKey||e.metaKey)&&['r','p','f','g','s','o','u','j','h','n','t','w','+','-','=','0'].includes(k)))e.preventDefault()},true);
+document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
 const runeImg=r=>r&&r.icon?img(DD+'img/'+r.icon,'',r.name):'';
 let V=null,ver='',notes={};
 const $=id=>document.getElementById(id);
@@ -84,8 +91,8 @@ function head(v){
 }
 
 function runeCard(b,i,v){
-  const r=b.runes[i],k=r.keys[0]||{},applied=v.applied&&v.applied.keystone===k.id&&k.id;
-  const mine=v.remembered&&v.remembered.keystone===k.id&&k.id;
+  const r=b.runes[i],k=r.keys[0]||{},applied=v.applied&&v.applied.keystone===k.id&&k.id&&(!v.applied.sub||v.applied.sub===(r.secondary&&r.secondary.id));
+  const rm=v.remembered||{},mine=rm.keystone===k.id&&k.id&&(!rm.sub||rm.sub===(r.secondary&&r.secondary.id));
   return `<div class="card${applied?' on':''}" id="rc${i}"><div class="row">${runeImg(k).replace('<img ','<img class="ks" ')}
     <div class="nm"><b>${esc(k.name)}</b>${mine?' <span class="tag">your pick</span>':''}<small>${esc(r.primary.name)} + ${esc(r.secondary.name)}</small></div>
     <button class="ap${applied?' done':''}" data-rune="${i}">${applied?'✓ Applied':'Apply'}</button></div>
@@ -100,13 +107,13 @@ function spellRow(b,i,v){
   const applied=same(ids,ap),mine=same(ids,rm);
   const sp=(s.spells||[]);
   return `<div class="card sp${applied?' on':''}"><div class="row">${sp.map(x=>x.img&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):'').join('')}
-    <div class="nm"><b style="font-size:13px">${sp.map(x=>esc(x.name)).join(' + ')||ids.join(' + ')}</b>${mine?' <span class="tag">your pick</span>':''}<small><b style="color:var(--ink);font-size:11.5px">${pct(s.pick)}</b> · ${num(s.play)} games · ${wr(s.wr)}</small></div>
+    <div class="nm"><b style="font-size:13px">${sp.map(x=>esc(x.name)).join(' + ')||ids.map(esc).join(' + ')}</b>${mine?' <span class="tag">your pick</span>':''}<small><b style="color:var(--ink);font-size:11.5px">${pct(s.pick)}</b> · ${num(s.play)} games · ${wr(s.wr)}</small></div>
     <button class="ap${applied?' done':''}" data-spell="${i}">${applied?'✓':'Apply'}</button></div>${notes['s'+i]||''}</div>`}
 
 function skills(b){
   const mx=b.max&&b.max.order,sp=b.spells||[];
   if(!mx)return '';
-  const box=k=>{const x=sp.find(s=>s.key===k);return `<span class="sk">${x&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):''}<span>${k}</span></span>`};
+  const box=k=>{const x=sp.find(s=>s.key===k);return `<span class="sk">${x&&ver?img(`${DD}${ver}/img/spell/${x.img}`,'',x.name):''}<span>${esc(k)}</span></span>`};
   const first=b.skills&&b.skills.order?b.skills.order.slice(0,3).join(' '):'';
   return `<h3>Skill order</h3><div class="row">${mx.map(box).join('<span class="gt">›</span>')}${first?`<small style="color:var(--mute);margin-left:auto">Start ${esc(first)}</small>`:''}</div>`}
 
@@ -132,14 +139,14 @@ document.addEventListener('click',async e=>{
   if(rb||pb){
     const i=+(rb?rb.dataset.rune:pb.dataset.idx),rep=pb?+pb.dataset.replace:0;
     (rb||pb).disabled=true;
-    let r;try{r=await applyRunes(i,rep)}catch(err){r={ok:false,msg:String(err)}}
+    let r;try{r=await applyRunes(V.key,i,rep)}catch(err){r={ok:false,msg:String(err)}}
     if(r.replace&&r.replace.length)notes['r'+i]=`<div class="msg">${esc(r.msg)}</div><div class="rep">${r.replace.map(p=>`<button data-replace="${p.id}" data-idx="${i}">Replace “${esc(p.name)}”</button>`).join('')}<button data-cancel="${i}">Cancel</button></div>`;
     else notes['r'+i]=`<div class="msg ${r.ok?'ok':'err'}">${esc(r.msg)}</div>`;
     if(r.ok&&!V.test)setTimeout(()=>{delete notes['r'+i];render(V)},2500);
     render(V);return}
   if(sb){
     const i=+sb.dataset.spell;sb.disabled=true;
-    let r;try{r=await applySpells(i)}catch(err){r={ok:false,msg:String(err)}}
+    let r;try{r=await applySpells(V.key,i)}catch(err){r={ok:false,msg:String(err)}}
     notes['s'+i]=r.ok&&!V.test?'':`<div class="msg ${r.ok?'ok':'err'}">${esc(r.msg)}</div>`;
     render(V);return}
 });

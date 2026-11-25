@@ -98,6 +98,15 @@ func TestOrderAndPrefs(t *testing.T) {
 	if r[0] != 1 || r[1] != 0 || s[0] != 1 {
 		t.Fatal(r, s)
 	}
+	// two pages with the same keystone: the secondary tree decides
+	b2 := sampleBuild(t)
+	b2.Runes[1].Keys[0] = b2.Runes[0].Keys[0]
+	if r, _ = Order(b2, Pref{Keystone: 8112, Sub: 8300}); r[0] != 1 {
+		t.Fatal(r)
+	}
+	if r, _ = Order(b2, Pref{Keystone: 8112, Sub: 8200}); r[0] != 0 {
+		t.Fatal(r)
+	}
 	path := filepath.Join(t.TempDir(), "p", "prefs.json")
 	p := LoadPrefs(path)
 	p.Set("Ahri:mid", func(x *Pref) { x.Keystone = 8229 })
