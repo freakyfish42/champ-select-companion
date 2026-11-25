@@ -56,8 +56,9 @@ func panelPage() string {
 const panelW, panelH = 300, 700
 
 type Config struct {
-	ShowPanel bool `json:"showPanel"`
-	TestMode  bool `json:"testMode"`
+	ShowPanel bool  `json:"showPanel"`
+	TestMode  bool  `json:"testMode"`
+	OwnPages  []int `json:"ownPages,omitempty"` // rune pages this app wrote (one per League account), known by id
 }
 
 type App struct {
@@ -393,7 +394,7 @@ const stale = "You just changed champion. Check the panel and click again."
 
 func (a *App) applyRunes(shown string, i, replaceID int) core.Result {
 	a.mu.Lock()
-	lcu, b, test, cur := a.lcu, a.build, a.cfg.TestMode, a.key
+	lcu, b, test, cur, own := a.lcu, a.build, a.cfg.TestMode, a.key, append([]int{}, a.cfg.OwnPages...)
 	key, name := a.prefKey(), core.PageName(a.champ.Name, a.roleOf())
 	a.mu.Unlock()
 	if lcu == nil {
@@ -402,8 +403,11 @@ func (a *App) applyRunes(shown string, i, replaceID int) core.Result {
 	if b == nil || shown != cur || i < 0 || i >= len(b.Runes) {
 		return core.Result{Msg: stale}
 	}
-	r := lcu.ApplyRunes(b.Runes[i], name, replaceID, test)
+	r := lcu.ApplyRunes(b.Runes[i], name, own, replaceID, test)
 	log.Printf("runes %s #%d: ok=%v %s", key, i, r.OK, r.Msg)
+	if r.OK && !test && r.PageID != 0 {
+		a.rememberPage(r.PageID)
+	}
 	if r.OK && !test {
 		ks, sub := b.Runes[i].Keystone(), b.Runes[i].Secondary.ID
 		a.prefs.Set(key, func(p *core.Pref) { p.Keystone, p.Sub = ks, sub })
@@ -415,6 +419,20 @@ func (a *App) applyRunes(shown string, i, replaceID int) core.Result {
 		go a.forcePush()
 	}
 	return r
+}
+
+// rememberPage keeps the id of the rune page the app wrote, newest first, at most 10 (one per account used on this PC).
+func (a *App) rememberPage(id int) {
+	a.mu.Lock()
+	list := []int{id}
+	for _, x := range a.cfg.OwnPages {
+		if x != id && len(list) < 10 {
+			list = append(list, x)
+		}
+	}
+	a.cfg.OwnPages = list
+	a.mu.Unlock()
+	a.saveConfig()
 }
 
 func (a *App) applySpells(shown string, i int) core.Result {

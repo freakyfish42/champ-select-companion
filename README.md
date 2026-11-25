@@ -7,7 +7,8 @@ and role (EUW, Emerald+). Click **Apply** and it sets them in the client. Nothin
 - Starts with Windows, sits in the tray, and does nothing until the League client is open.
 - The panel docks to the client's right edge (or left, or over its edge if there's no room), shows only while the
   client is in front, and hides when the game starts. Drag it by the header; × hides it for this champ select.
-- Rune pages go into one page of its own, named like `lømsland · Ahri Mid`. Your other pages are never touched. If
+- Rune pages go into one page of its own, named just like `Ahri Mid` (the app knows it by id, so its name never shows in
+  the client). Your other pages are never touched. If
   every slot is full, it asks which page to replace.
 - Spells keep their keys: if Flash is on F, it stays on F.
 - It remembers what you picked per champion and role, and shows that first next time.

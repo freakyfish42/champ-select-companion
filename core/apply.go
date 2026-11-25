@@ -6,14 +6,15 @@ import (
 	"strings"
 )
 
-// PagePrefix marks the one rune page the app owns. Pages without it are never changed unless the player picks one to replace.
-const PagePrefix = "lømsland"
+// LegacyPrefix marked the app's rune page in early test builds; such a page still counts as the app's own.
+// The app now knows its page by id (remembered on this PC), so nothing in the client carries the app's name.
+const LegacyPrefix = "lømsland"
 
 var roleNames = map[string]string{"top": "Top", "jungle": "Jungle", "mid": "Mid", "adc": "Bot", "support": "Support"}
 
-// PageName is e.g. "lømsland · Ahri Mid", kept short enough for the client's name field.
+// PageName is e.g. "Ahri Mid", kept short enough for the client's name field.
 func PageName(champ, role string) string {
-	n := PagePrefix + " · " + champ
+	n := champ
 	if r := roleNames[role]; r != "" {
 		n += " " + r
 	}
@@ -32,10 +33,12 @@ type Page struct {
 }
 
 // Result is what the panel shows after a click. Replace lists the player's pages when every slot is in use.
+// PageID is the rune page the app wrote, to remember as its own.
 type Result struct {
 	OK      bool   `json:"ok"`
 	Msg     string `json:"msg"`
 	Replace []Page `json:"replace,omitempty"`
+	PageID  int    `json:"-"`
 }
 
 func fail(err error) Result { return Result{Msg: err.Error()} }
@@ -70,10 +73,10 @@ func describe(p RunePage) string {
 	return strings.Join(names, ", ")
 }
 
-// ApplyRunes writes p into the app's own rune page and makes it the current page.
+// ApplyRunes writes p into the app's own rune page (one of ownIDs, the pages it wrote before) and makes it current.
 // With no page of its own and no free slot it changes nothing and returns the player's pages to choose from;
 // replaceID is the page the player then chose. dry only describes what would happen.
-func (c *Client) ApplyRunes(p RunePage, name string, replaceID int, dry bool) Result {
+func (c *Client) ApplyRunes(p RunePage, name string, ownIDs []int, replaceID int, dry bool) Result {
 	ids, err := PerkIDs(p)
 	if err != nil {
 		return fail(err)
@@ -96,7 +99,7 @@ func (c *Client) ApplyRunes(p RunePage, name string, replaceID int, dry bool) Re
 			continue // Riot's preset pages
 		}
 		editable = append(editable, pg)
-		if own == nil && strings.HasPrefix(pg.Name, PagePrefix) {
+		if own == nil && (containsInt(ownIDs, pg.ID) || strings.HasPrefix(pg.Name, LegacyPrefix)) {
 			own = &pages[i]
 		}
 	}
@@ -139,7 +142,16 @@ func (c *Client) ApplyRunes(p RunePage, name string, replaceID int, dry bool) Re
 	if made.ID != 0 && !made.Current {
 		_ = c.Do("PUT", "/lol-perks/v1/currentpage", made.ID, nil)
 	}
-	return Result{OK: true, Msg: "Rune page set: " + p.Keys[0].Name}
+	return Result{OK: true, Msg: "Rune page set: " + p.Keys[0].Name, PageID: made.ID}
+}
+
+func containsInt(list []int, v int) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // SpellSlots keeps each spell on the key it's already on, so Flash stays on D or F as the player likes it.

@@ -70,10 +70,13 @@ func TestSpellSlots(t *testing.T) {
 }
 
 func TestPageNameAndPerks(t *testing.T) {
-	if n := PageName("Ahri", "mid"); n != "lømsland · Ahri Mid" {
+	if n := PageName("Ahri", "mid"); n != "Ahri Mid" {
 		t.Fatal(n)
 	}
-	if n := PageName("Nunu & Willump", "jungle"); len([]rune(n)) != 25 || !strings.HasPrefix(n, PagePrefix) {
+	if n := PageName("Nunu & Willump", "jungle"); n != "Nunu & Willump Jungle" {
+		t.Fatal(n)
+	}
+	if n := PageName("Ahri", ""); n != "Ahri" {
 		t.Fatal(n)
 	}
 	b := sampleBuild(t)
@@ -230,25 +233,40 @@ func TestApplyRunes(t *testing.T) {
 	// a free slot: a new page is made and becomes current, nothing deleted
 	f, srv := newFake(3, page(1, "Preset 1", false), page(10, "My Ahri", true))
 	c := client(srv, "pw")
-	if r := c.ApplyRunes(b.Runes[0], name, 0, false); !r.OK {
+	r := c.ApplyRunes(b.Runes[0], name, nil, 0, false)
+	if !r.OK || r.PageID != 901 {
 		t.Fatal(r)
 	}
-	if len(f.pages) != 3 || f.pages[2]["name"] != name || f.current != 901 {
+	if len(f.pages) != 3 || f.pages[2]["name"] != "Ahri Mid" || f.current != 901 {
 		t.Fatalf("%+v cur=%d", f.pages, f.current)
 	}
-	// second click: the app's own page is replaced, the player's page untouched
-	if r := c.ApplyRunes(b.Runes[1], name, 0, false); !r.OK {
+	own := []int{r.PageID}
+	// second click: the app's own page (known by id) is replaced, the player's page untouched
+	if r := c.ApplyRunes(b.Runes[1], name, own, 0, false); !r.OK {
 		t.Fatal(r)
 	}
 	if len(f.pages) != 3 || f.pages[1]["name"] != "My Ahri" || jsonNum(f.pages[2]["primaryStyleId"]) != "8200" {
 		t.Fatalf("%+v", f.pages)
+	}
+	// a player's page that happens to share the name is not the app's
+	f2, srv2 := newFake(3, page(10, "Ahri Mid", true))
+	if r := client(srv2, "pw").ApplyRunes(b.Runes[0], name, own, 0, false); !r.OK || len(f2.pages) != 2 || jsonNum(f2.pages[0]["id"]) != "10" {
+		t.Fatalf("%+v %+v", r, f2.pages)
+	}
+	srv2.Close()
+	srv.Close()
+
+	// a page from an early test build ("lømsland · ...") still counts as the app's and is renamed
+	f, srv = newFake(2, page(10, "A", true), page(11, "lømsland · Ahri Mid", true))
+	if r := client(srv, "pw").ApplyRunes(b.Runes[0], name, nil, 0, false); !r.OK || len(f.pages) != 2 || f.pages[1]["name"] != "Ahri Mid" {
+		t.Fatalf("%+v %+v", r, f.pages)
 	}
 	srv.Close()
 
 	// all slots used: nothing changes, the player's pages are offered
 	f, srv = newFake(2, page(1, "Preset", false), page(10, "A", true), page(11, "B", true))
 	c = client(srv, "pw")
-	r := c.ApplyRunes(b.Runes[0], name, 0, false)
+	r = c.ApplyRunes(b.Runes[0], name, own, 0, false)
 	if r.OK || len(r.Replace) != 2 || r.Replace[0].ID != 10 {
 		t.Fatalf("%+v", r)
 	}
@@ -258,11 +276,11 @@ func TestApplyRunes(t *testing.T) {
 		}
 	}
 	// test mode describes and changes nothing
-	if r := c.ApplyRunes(b.Runes[0], name, 11, true); !r.OK || !strings.Contains(r.Msg, "“B”") || len(f.pages) != 3 {
+	if r := c.ApplyRunes(b.Runes[0], name, own, 11, true); !r.OK || !strings.Contains(r.Msg, "“B”") || len(f.pages) != 3 {
 		t.Fatalf("%+v", r)
 	}
 	// the player picks B to replace
-	if r := c.ApplyRunes(b.Runes[0], name, 11, false); !r.OK {
+	if r := c.ApplyRunes(b.Runes[0], name, own, 11, false); !r.OK {
 		t.Fatal(r)
 	}
 	if len(f.pages) != 3 || f.pages[1]["name"] != "A" || f.pages[2]["name"] != name {
@@ -272,14 +290,14 @@ func TestApplyRunes(t *testing.T) {
 
 	// a page id that isn't one of the player's own pages is refused, and Riot's preset stays
 	f, srv = newFake(1, page(1, "Preset", false), page(10, "A", true))
-	if r := client(srv, "pw").ApplyRunes(b.Runes[0], name, 1, false); r.OK || len(f.pages) != 2 {
+	if r := client(srv, "pw").ApplyRunes(b.Runes[0], name, nil, 1, false); r.OK || len(f.pages) != 2 {
 		t.Fatalf("%+v %+v", r, f.pages)
 	}
 	srv.Close()
 
 	// wrong password: a readable error
 	_, srv = newFake(3)
-	if r := client(srv, "nope").ApplyRunes(b.Runes[0], name, 0, false); r.OK || !strings.Contains(r.Msg, "401") {
+	if r := client(srv, "nope").ApplyRunes(b.Runes[0], name, nil, 0, false); r.OK || !strings.Contains(r.Msg, "401") {
 		t.Fatalf("%+v", r)
 	}
 	srv.Close()
