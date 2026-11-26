@@ -45,17 +45,17 @@ type SpellPair struct {
 
 // Build is the part of the site's /api/build answer the app acts on. Raw keeps the whole answer for the panel.
 type Build struct {
-	Champion string          `json:"champion"`
-	ID       string          `json:"id"`
-	Position string          `json:"position"`
-	Region   string          `json:"region"`
-	Runes    []RunePage      `json:"runes"`
-	Summs    []SpellPair     `json:"summs"`
-	Vs       []VsEntry       `json:"vs"` // this champion's win rate against each lane opponent
+	Champion string      `json:"champion"`
+	ID       string      `json:"id"`
+	Position string      `json:"position"`
+	Region   string      `json:"region"`
+	Runes    []RunePage  `json:"runes"`
+	Summs    []SpellPair `json:"summs"`
+	Vs       []VsEntry   `json:"vs"` // this champion's win rate against each lane opponent
 	Skills   struct {
 		Order []string `json:"order"` // the point for each level, "Q" "W" "E" "R"
 	} `json:"skills"`
-	Raw      json.RawMessage `json:"-"`
+	Raw json.RawMessage `json:"-"`
 }
 
 // FetchBuild asks the site for a champion's build. role may be "" (the champion's most played role).

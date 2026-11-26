@@ -71,6 +71,7 @@ const (
 	wsExLayered      = 0x00080000
 	wsExTransparent  = 0x00000020 // clicks go through to the game
 	wsExNoActivate   = 0x08000000
+	wsExTopmost      = 0x00000008
 	lwaAlpha         = 2
 )
 

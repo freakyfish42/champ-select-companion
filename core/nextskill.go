@@ -26,7 +26,7 @@ func NextSkill(order []string, p Player, alias string) (idx int, spend bool) {
 	}
 	var planned [4]int
 	for i, k := range order {
-		s := skillSlot(k)
+		s := SkillSlot(k)
 		if s < 0 || (s == 3 && freeR) {
 			continue
 		}
@@ -50,7 +50,8 @@ func FreeR(alias string) bool {
 	return false
 }
 
-func skillSlot(k string) int {
+// SkillSlot: "Q" "W" "E" "R" → 0..3 (-1 for anything else).
+func SkillSlot(k string) int {
 	switch strings.ToUpper(strings.TrimSpace(k)) {
 	case "Q":
 		return 0

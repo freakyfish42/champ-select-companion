@@ -64,6 +64,17 @@ type Config struct {
 	CardDY    int32 `json:"cardDY,omitempty"`
 	CardAlpha int   `json:"cardAlpha,omitempty"` // the card's opacity in percent: 100, 80 or 60 (0 = default 60)
 	CardSize  int   `json:"cardSize,omitempty"`  // the card's size in percent: 100, 125 or 150 (0 = default 125)
+	// where the game's Q and R icons are, as the player lined them up (nil = not yet: no skill marker)
+	SkillSpot *core.SkillSpot `json:"skillSpot,omitempty"`
+	MarkerOff bool            `json:"markerOff,omitempty"` // the tray's "Skill marker on the ability bar" is off
+}
+
+// skillSpot: where the ability bar is, and whether the player has lined it up.
+func (c Config) skillSpot() (core.SkillSpot, bool) {
+	if c.SkillSpot != nil && c.SkillSpot.Valid() {
+		return *c.SkillSpot, true
+	}
+	return core.DefaultSkillSpot(), false
 }
 
 // cardAlpha: the card's opacity setting (default 60 %).
@@ -102,6 +113,7 @@ type App struct {
 	skills     [4]int        // your points in Q W E R, from the same place
 	cardHidden bool          // hidden with the hotkey, for this game
 	moving     bool          // the player is moving the card (it takes clicks while moving)
+	liningUp   bool          // the player is lining up the skill marker over the ability bar
 	cardH      int32         // the card's height as the page measured it (CSS px)
 	cardDPR    float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
 	gate       core.CardGate // does this game get the card? Only one entered straight from your own champ select
@@ -358,7 +370,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.mu.Lock()
 	a.gen++
 	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
-	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
+	a.inGame, a.moving, a.liningUp, a.level, a.skills = false, false, false, 0, [4]int{}
 	a.cl = clashState{}
 	a.timer, a.timerAt = core.Timer{}, time.Time{}
 	a.hidden, a.dragged = false, false
@@ -409,7 +421,7 @@ func (a *App) enterGame() bool {
 func (a *App) leaveGame() {
 	a.mu.Lock()
 	was := a.inGame
-	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
+	a.inGame, a.moving, a.liningUp, a.level, a.skills = false, false, false, 0, [4]int{}
 	a.mu.Unlock()
 	if was {
 		log.Printf("game ended")
@@ -718,35 +730,37 @@ func (a *App) retry() {
 // ---- what the panel shows ----
 
 type view struct {
-	Version string          `json:"version"`
-	Test    bool            `json:"test"`
-	TooLate bool            `json:"tooLate"` // the game starts in a moment: Apply is locked
-	State   string          `json:"state"`
-	Msg     string          `json:"msg"`
-	Mode    string          `json:"mode"`
-	Queue   string          `json:"queue"`
-	Name    string          `json:"name"`
-	Alias   string          `json:"alias"`
-	Role    string          `json:"role"`
-	Locked  bool            `json:"locked"`
-	Key     string          `json:"key"` // which build is on screen; clicks send it back
-	Build   json.RawMessage `json:"build,omitempty"`
-	Runes   []int           `json:"runeOrder"`
-	Spells  []int           `json:"spellOrder"`
-	Pref    core.Pref       `json:"remembered"`
-	Applied core.Pref       `json:"applied"`
-	Matchup *core.Matchup   `json:"matchup,omitempty"`
-	Counter []core.VsEntry  `json:"counters,omitempty"` // pick ideas against the lane opponent, while not locked in
-	CntFor  string          `json:"countersFor,omitempty"`
-	Bans    []banView       `json:"bans,omitempty"` // most banned (EUW Emerald+), until you lock in
-	Clash   *clashView      `json:"clash,omitempty"`
-	Level   int             `json:"level,omitempty"`  // in game: your level
-	Next    int             `json:"next"`             // in game: the skill order's next point (-1: none)
-	Spend   bool            `json:"spend,omitempty"`  // in game: you have a skill point to spend now
-	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
-	Hotkey  string          `json:"hotkey,omitempty"`
-	Alpha   int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
-	Size    int             `json:"size,omitempty"`  // in game: the card's size in percent
+	Version    string          `json:"version"`
+	Test       bool            `json:"test"`
+	TooLate    bool            `json:"tooLate"` // the game starts in a moment: Apply is locked
+	State      string          `json:"state"`
+	Msg        string          `json:"msg"`
+	Mode       string          `json:"mode"`
+	Queue      string          `json:"queue"`
+	Name       string          `json:"name"`
+	Alias      string          `json:"alias"`
+	Role       string          `json:"role"`
+	Locked     bool            `json:"locked"`
+	Key        string          `json:"key"` // which build is on screen; clicks send it back
+	Build      json.RawMessage `json:"build,omitempty"`
+	Runes      []int           `json:"runeOrder"`
+	Spells     []int           `json:"spellOrder"`
+	Pref       core.Pref       `json:"remembered"`
+	Applied    core.Pref       `json:"applied"`
+	Matchup    *core.Matchup   `json:"matchup,omitempty"`
+	Counter    []core.VsEntry  `json:"counters,omitempty"` // pick ideas against the lane opponent, while not locked in
+	CntFor     string          `json:"countersFor,omitempty"`
+	Bans       []banView       `json:"bans,omitempty"` // most banned (EUW Emerald+), until you lock in
+	Clash      *clashView      `json:"clash,omitempty"`
+	Level      int             `json:"level,omitempty"`      // in game: your level
+	Next       int             `json:"next"`                 // in game: the skill order's next point (-1: none)
+	Spend      bool            `json:"spend,omitempty"`      // in game: you have a skill point to spend now
+	LineUp     bool            `json:"lineUp,omitempty"`     // in game: the skill marker is being lined up
+	MarkerHint bool            `json:"markerHint,omitempty"` // in game: the skill marker isn't lined up yet
+	Moving     bool            `json:"moving,omitempty"`     // in game: the card is being moved
+	Hotkey     string          `json:"hotkey,omitempty"`
+	Alpha      int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
+	Size       int             `json:"size,omitempty"`  // in game: the card's size in percent
 }
 
 func (a *App) roleOf() string {
@@ -764,9 +778,10 @@ func (a *App) view() view {
 		if !a.cardReady() {
 			return view{State: "ingame-none", Version: version}
 		}
+		_, lined := a.cfg.skillSpot()
 		next, spend := core.NextSkill(a.build.Skills.Order, core.Player{Level: a.level, Skills: a.skills}, a.champ.Alias)
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
-			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
+			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, LineUp: a.liningUp, MarkerHint: !lined && !a.cfg.MarkerOff, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
 	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
@@ -992,6 +1007,7 @@ func (a *App) uiLoop() {
 	}
 	h := uintptr(w.Window())
 	makePanel(h)
+	makeMarker() // on this thread: the panel's message loop serves the marker's windows too
 	_ = w.Bind("ready", func() { go a.forcePush() })
 	_ = w.Bind("applyRunes", func(key string, i, replaceID int) core.Result { return a.applyRunes(key, i, replaceID) })
 	_ = w.Bind("applySpells", func(key string, i int) core.Result { return a.applySpells(key, i) })
@@ -1023,6 +1039,7 @@ func (a *App) uiLoop() {
 	a.w, a.hwnd = w, h
 	a.mu.Unlock()
 	go a.follow(h)
+	go a.markerLoop()
 	w.Run()
 	// Run only returns if the window was closed (Alt+F4): start a fresh copy rather than run without a panel.
 	log.Printf("panel window closed; restarting")

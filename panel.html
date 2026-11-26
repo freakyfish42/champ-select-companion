@@ -229,6 +229,8 @@ function ingame(v){
   return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span>${badge}<span class="mx" id="mx" data-def="${esc(mx)}">${mx}</span></div>`
     +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span data-name="Level ${i+1}: ${esc(k)}" class="${esc(String(k).toLowerCase())}${done(i)?' done':''}${i===nx?' nxt'+(go?' go':''):''}"${i===nx?` style="--k:${col}"`:''}>${esc(k)}</span>`).join('')}</div>`:'')
     +(groups.length?`<div class="its">${groups.join('<i></i>')}</div>`:'')
+    +(v.lineUp?`<div class="mv"><span>Drag the <b style="color:#9fc4ff">blue box</b> onto your Q icon and the <b style="color:#ff9f9f">red box</b> onto R, then click “Done lining up the skill marker” in the tray</span></div>`
+      :v.markerHint&&go?`<div class="mv" style="color:var(--mute)"><span>Tray → “Line up the skill marker” to also highlight it on your ability bar</span></div>`:'')
     +(v.moving?`<div class="mv"><span>Drag it where you want it</span><button class="ap" id="mvdone">Done</button></div>`:'')}
 
 function render(v){

@@ -442,7 +442,7 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	if !strings.Contains(s, "want := a.inGame && a.cardReady()") || strings.Count(s, "cardKeysDown()") != 1 {
 		t.Error("the card's keys must only be looked at while a game with a card runs")
 	}
-	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go"} {
+	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go", "../marker_windows.go"} {
 		b, _ := os.ReadFile(f)
 		for _, input := range []string{"SendInput", "keybd_event", "mouse_event", "SetCursorPos", "SetWindowsHookEx", "RegisterRawInputDevices"} {
 			if strings.Contains(string(b), input) {
@@ -453,5 +453,14 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	w, _ := os.ReadFile("../win_windows.go")
 	if !strings.Contains(string(w), "ex |= wsExTransparent") || !strings.Contains(string(w), "wsExLayered | wsExNoActivate") {
 		t.Error("the card must not take focus, and must let clicks through to the game")
+	}
+	// the skill marker over the ability bar: same rules as the card, and only where the card shows
+	m, _ := os.ReadFile("../marker_windows.go")
+	ms := string(m)
+	if !strings.Contains(ms, "ex |= wsExTransparent") || !strings.Contains(ms, "wsExLayered | wsExNoActivate") || !strings.Contains(ms, "return maNoActivate") {
+		t.Error("the skill marker must not take focus, and must let clicks through to the game")
+	}
+	if !strings.Contains(ms, "card := a.inGame && a.cardReady() && !a.cardHidden") || !strings.Contains(ms, "core.NextSkill(") {
+		t.Error("the skill marker only shows the build's own skill order, only where the card shows")
 	}
 }
