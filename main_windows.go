@@ -64,17 +64,10 @@ type Config struct {
 	CardDY    int32 `json:"cardDY,omitempty"`
 	CardAlpha int   `json:"cardAlpha,omitempty"` // the card's opacity in percent: 100, 80 or 60 (0 = default 60)
 	CardSize  int   `json:"cardSize,omitempty"`  // the card's size in percent: 100, 125 or 150 (0 = default 125)
-	// where the game's Q and R icons are, as the player lined them up (nil = not yet: no skill marker)
+	// where the game's Q and R icons are, as the player lined them up (nil = not: the app works it out from
+	// League's HUD Scale)
 	SkillSpot *core.SkillSpot `json:"skillSpot,omitempty"`
 	MarkerOff bool            `json:"markerOff,omitempty"` // the tray's "Skill marker on the ability bar" is off
-}
-
-// skillSpot: where the ability bar is, and whether the player has lined it up.
-func (c Config) skillSpot() (core.SkillSpot, bool) {
-	if c.SkillSpot != nil && c.SkillSpot.Valid() {
-		return *c.SkillSpot, true
-	}
-	return core.DefaultSkillSpot(), false
 }
 
 // cardAlpha: the card's opacity setting (default 60 %).
@@ -108,12 +101,14 @@ type App struct {
 	inSelect   bool
 	phase      string
 	mode       string
-	inGame     bool          // a game is loading or running
-	level      int           // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	skills     [4]int        // your points in Q W E R, from the same place
-	cardHidden bool          // hidden with the hotkey, for this game
-	moving     bool          // the player is moving the card (it takes clicks while moving)
-	liningUp   bool          // the player is lining up the skill marker over the ability bar
+	inGame     bool    // a game is loading or running
+	level      int     // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills     [4]int  // your points in Q W E R, from the same place
+	cardHidden bool    // hidden with the hotkey, for this game
+	moving     bool    // the player is moving the card (it takes clicks while moving)
+	liningUp   bool    // the player is lining up the skill marker over the ability bar
+	hud        float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
+	hudOK      bool
 	cardH      int32         // the card's height as the page measured it (CSS px)
 	cardDPR    float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
 	gate       core.CardGate // does this game get the card? Only one entered straight from your own champ select
@@ -778,7 +773,7 @@ func (a *App) view() view {
 		if !a.cardReady() {
 			return view{State: "ingame-none", Version: version}
 		}
-		_, lined := a.cfg.skillSpot()
+		_, lined := a.skillSpot()
 		next, spend := core.NextSkill(a.build.Skills.Order, core.Player{Level: a.level, Skills: a.skills}, a.champ.Alias)
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
 			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, LineUp: a.liningUp, MarkerHint: !lined && !a.cfg.MarkerOff, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}

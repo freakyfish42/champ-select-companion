@@ -14,10 +14,41 @@ type SkillSpot struct {
 	QY float64 `json:"qy"`
 	RX float64 `json:"rx"`
 	RY float64 `json:"ry"`
+	// the HUD Scale it was lined up at (nil: unknown, from before the app read it)
+	HUD *float64 `json:"hud,omitempty"`
 }
 
-// DefaultSkillSpot is a first guess (1080p, HUD scale 100); "Line up the skill marker" puts it right.
-func DefaultSkillSpot() SkillSpot { return SkillSpot{QX: -0.083, QY: 0.075, RX: 0.083, RY: 0.075} }
+// HUDSpot is where League puts the ability bar at HUD Scale s (0 to 1). Measured on the owner's PC on 2026-11-26
+// at HUD Scale 0, 9 and 100 (4:3, 1280x960) and checked in a 16:9 window: the bar is sized by the game's height,
+// grows linearly with the scale, and R's centre stays in the middle of the screen. Within a pixel at all four.
+func HUDSpot(s float64) SkillSpot {
+	s = math.Max(0, math.Min(1, s))
+	p := 0.0405 + 0.0213*s // gap between two icons' centres
+	y := 0.0051 + 1.46*p   // the icons' centre, up from the bottom
+	const rx = -0.0013     // R's centre, from the middle
+	return SkillSpot{QX: rx - 3*p, QY: y, RX: rx, RY: y}
+}
+
+// ChooseSpot picks where the marker goes: a spot the player lined up at the current HUD Scale wins (they may
+// know better, e.g. after a HUD change in a patch); otherwise the measured layout for the current HUD Scale;
+// a lined-up spot of unknown scale only when the scale can't be read. ok false: nowhere known.
+func ChooseSpot(manual *SkillSpot, scale float64, haveScale bool) (SkillSpot, bool) {
+	if manual != nil && manual.Valid() {
+		if manual.HUD != nil && haveScale && math.Abs(*manual.HUD-scale) < 0.005 {
+			return *manual, true
+		}
+		if !haveScale {
+			return *manual, true
+		}
+	}
+	if haveScale {
+		return HUDSpot(scale), true
+	}
+	return DefaultSkillSpot(), false
+}
+
+// DefaultSkillSpot: where the boxes start when lining up without a known HUD Scale (the middle of the range).
+func DefaultSkillSpot() SkillSpot { return HUDSpot(0.5) }
 
 // Valid: R to the right of Q, a sane distance apart, about level.
 func (s SkillSpot) Valid() bool {

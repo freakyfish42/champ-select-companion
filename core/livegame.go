@@ -87,6 +87,29 @@ const (
 
 // GameWindowMode reads WindowMode from League's Config/game.cfg. ok is false when it isn't there.
 func GameWindowMode(cfg string) (mode int, ok bool) {
+	v, found := cfgValue(cfg, "general", "WindowMode")
+	if !found {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil
+}
+
+// GameHUDScale reads the HUD Scale setting (0 to 1; the game's menu shows it as 0 to 100) from game.cfg.
+func GameHUDScale(cfg string) (float64, bool) {
+	v, found := cfgValue(cfg, "hud", "GlobalScale")
+	if !found {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f < 0 || f > 1 {
+		return 0, false
+	}
+	return f, true
+}
+
+// cfgValue finds key= in [section] of an ini-style file (both case-insensitive).
+func cfgValue(cfg, section, key string) (string, bool) {
 	sec := ""
 	sc := bufio.NewScanner(strings.NewReader(cfg))
 	for sc.Scan() {
@@ -96,13 +119,11 @@ func GameWindowMode(cfg string) (mode int, ok bool) {
 			continue
 		}
 		k, v, found := strings.Cut(line, "=")
-		if found && sec == "general" && strings.EqualFold(strings.TrimSpace(k), "WindowMode") {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-				return n, true
-			}
+		if found && sec == section && strings.EqualFold(strings.TrimSpace(k), key) {
+			return strings.TrimSpace(v), true
 		}
 	}
-	return 0, false
+	return "", false
 }
 
 var errNotLoaded = errors.New("the game isn't loaded yet")

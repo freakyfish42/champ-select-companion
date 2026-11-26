@@ -21,7 +21,6 @@ var (
 	pRegisterClassExW   = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW    = user32.NewProc("CreateWindowExW")
 	pDefWindowProcW     = user32.NewProc("DefWindowProcW")
-	pGetClientRect      = user32.NewProc("GetClientRect")
 	pFillRect           = user32.NewProc("FillRect")
 	pInvalidateRect     = user32.NewProc("InvalidateRect")
 	pSetWindowRgn       = user32.NewProc("SetWindowRgn")
@@ -61,7 +60,7 @@ func markerProc(h, msg, wp, lp uintptr) uintptr {
 		marker.mu.Unlock()
 		if b != 0 {
 			var r rect
-			pGetClientRect.Call(h, uintptr(unsafe.Pointer(&r)))
+			pGetClientRectW.Call(h, uintptr(unsafe.Pointer(&r)))
 			pFillRect.Call(wp, uintptr(unsafe.Pointer(&r)), b)
 			return 1
 		}
@@ -182,15 +181,27 @@ func skillBox(game rect, s core.SkillSpot, slot int) rect {
 func (a *App) markerLoop() {
 	start := time.Now()
 	lined := false // the boxes for lining up are out (placed once, then the player moves them)
+	var hudAt time.Time
 	for {
 		if !marker.ready() {
 			time.Sleep(time.Second)
 			continue
 		}
+		// League's HUD Scale (it can change mid-game in the options), every few seconds while a game runs
+		a.mu.Lock()
+		in := a.inGame
+		a.mu.Unlock()
+		if in && time.Since(hudAt) > 5*time.Second {
+			s, ok := hudScale()
+			a.mu.Lock()
+			a.hud, a.hudOK = s, ok
+			a.mu.Unlock()
+			hudAt = time.Now()
+		}
 		a.mu.Lock()
 		card := a.inGame && a.cardReady() && !a.cardHidden
 		lining := a.liningUp && a.inGame
-		spot, have := a.cfg.skillSpot()
+		spot, have := a.skillSpot()
 		slot := -1
 		if card && have && !a.cfg.MarkerOff && a.build != nil {
 			ord := a.build.Skills.Order
@@ -202,7 +213,7 @@ func (a *App) markerLoop() {
 		a.mu.Unlock()
 
 		g, fg := gameWindow(), foreground()
-		gr, ok := windowRect(g)
+		gr, ok := clientRect(g)
 		up := g != 0 && ok && !isIconic(g) && isVisible(g) && (fg == g || fg == panel || lining)
 		switch {
 		case lining && up:
@@ -270,7 +281,7 @@ func (a *App) setLiningUp(on bool) bool {
 		return false
 	}
 	g := gameWindow()
-	gr, ok1 := windowRect(g)
+	gr, ok1 := clientRect(g)
 	q, ok2 := windowRect(marker.win[0])
 	r, ok3 := windowRect(marker.win[1])
 	if g != 0 && ok1 && ok2 && ok3 {
@@ -280,11 +291,15 @@ func (a *App) setLiningUp(on bool) bool {
 			return true // still lining up
 		}
 		a.mu.Lock()
+		if a.hudOK {
+			h := a.hud
+			s.HUD = &h
+		}
 		a.cfg.SkillSpot = &s
 		a.cfg.MarkerOff = false
 		a.mu.Unlock()
 		a.saveConfig()
-		log.Printf("skill marker lined up: %+v (game %dx%d)", s, gr.Right-gr.Left, gr.Bottom-gr.Top)
+		log.Printf("skill marker lined up: Q %.4f,%.4f R %.4f,%.4f (game %dx%d, HUD scale %v)", s.QX, s.QY, s.RX, s.RY, gr.Right-gr.Left, gr.Bottom-gr.Top, hudText(s.HUD))
 	}
 	a.mu.Lock()
 	a.liningUp = false
@@ -305,4 +320,16 @@ func (a *App) liningUpNow() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.liningUp
+}
+
+func hudText(p *float64) string {
+	if p == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%.0f", *p*100)
+}
+
+// skillSpot: where the ability bar is (see core.ChooseSpot). Call with a.mu held.
+func (a *App) skillSpot() (core.SkillSpot, bool) {
+	return core.ChooseSpot(a.cfg.SkillSpot, a.hud, a.hudOK)
 }

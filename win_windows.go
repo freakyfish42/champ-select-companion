@@ -44,6 +44,7 @@ var (
 	pSetLayeredAttrs       = user32.NewProc("SetLayeredWindowAttributes")
 	pGetAsyncKeyState      = user32.NewProc("GetAsyncKeyState")
 	pGetCursorPos          = user32.NewProc("GetCursorPos")
+	pGetClientRectW        = user32.NewProc("GetClientRect")
 )
 
 type rect struct{ Left, Top, Right, Bottom int32 }
@@ -133,6 +134,31 @@ func gameWindowMode() (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// hudScale reads League's HUD Scale setting (0 to 1) from game.cfg.
+func hudScale() (float64, bool) {
+	for _, d := range leagueDirs() {
+		if b, err := os.ReadFile(filepath.Join(d, "Config", "game.cfg")); err == nil {
+			return core.GameHUDScale(string(b))
+		}
+	}
+	return 0, false
+}
+
+var pClientToScreen = user32.NewProc("ClientToScreen")
+
+// clientRect: the game's picture on screen, without the title bar and borders in Windowed mode.
+func clientRect(h uintptr) (rect, bool) {
+	var r rect
+	if ok, _, _ := pGetClientRectW.Call(h, uintptr(unsafe.Pointer(&r))); ok == 0 || r.Right <= 0 || r.Bottom <= 0 {
+		return rect{}, false
+	}
+	pt := [2]int32{0, 0}
+	if ok, _, _ := pClientToScreen.Call(h, uintptr(unsafe.Pointer(&pt))); ok == 0 {
+		return rect{}, false
+	}
+	return rect{Left: pt[0], Top: pt[1], Right: pt[0] + r.Right, Bottom: pt[1] + r.Bottom}, true
 }
 
 func findLeague() (core.Creds, error) {
