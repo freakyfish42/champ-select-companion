@@ -93,57 +93,58 @@ type App struct {
 	prefs *core.Prefs
 	web   *http.Client
 
-	mu         sync.Mutex
-	cfg        Config
-	lcu        *core.Client
-	champs     map[int]core.Champion
-	banned     []int // champions banned so far in this champ select
-	inSelect   bool
-	phase      string
-	mode       string
-	inGame     bool    // a game is loading or running
-	level      int     // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	skills     [4]int  // your points in Q W E R, from the same place
-	cardHidden bool    // hidden with the hotkey, for this game
-	moving     bool    // the player is moving the card (it takes clicks while moving)
-	liningUp   bool    // the player is lining up the skill marker over the ability bar
-	hud        float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
-	hudOK      bool
-	cardH      int32         // the card's height as the page measured it (CSS px)
-	cardDPR    float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
-	gate       core.CardGate // does this game get the card? Only one entered straight from your own champ select
-	cardArmed  bool
-	timer      core.Timer // champ select's clock, read at timerAt
-	timerAt    time.Time
-	queue      string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
-	clash      bool
-	enemies    []core.EnemyPick     // champions the other team has shown
-	posOf      map[string]string    // Clash: the opponents' registered positions, by puuid
-	gen        int                  // counts champ selects, so late answers from an earlier one are dropped
-	needCnt    string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
-	cntNext    map[string]time.Time // when a counter-pick fetch may be tried (again)
-	tier       *core.TierList
-	tierAt     time.Time
-	cl         clashState
-	pick       core.Pick
-	champ      core.Champion
-	key        string
-	build      *core.Build
-	state      string // waiting, pick, loading, build, unsupported, error
-	msg        string
-	seq        int
-	cache      map[string]cached
-	applied    map[string]core.Pref
-	hidden     bool // closed by the player for this champ select
-	dragged    bool // moved by the player for this champ select
-	lastSent   string
-	status     string
-	panelErr   string // why the panel window didn't start, for Check setup
-	onStatus   func(string)
-	w          webview.WebView
-	hwnd       uintptr
-	uiWanted   chan struct{}
-	uiOnce     sync.Once
+	mu          sync.Mutex
+	cfg         Config
+	lcu         *core.Client
+	champs      map[int]core.Champion
+	banned      []int // champions banned so far in this champ select
+	inSelect    bool
+	phase       string
+	mode        string
+	inGame      bool    // a game is loading or running
+	level       int     // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills      [4]int  // your points in Q W E R, from the same place
+	cardHidden  bool    // hidden with the hotkey, for this game
+	moving      bool    // the player is moving the card (it takes clicks while moving)
+	liningUp    bool    // the player is lining up the skill marker over the ability bar
+	onLiningEnd func()  // set by the tray: lining up ended by itself (the game ended)
+	hud         float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
+	hudOK       bool
+	cardH       int32         // the card's height as the page measured it (CSS px)
+	cardDPR     float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
+	gate        core.CardGate // does this game get the card? Only one entered straight from your own champ select
+	cardArmed   bool
+	timer       core.Timer // champ select's clock, read at timerAt
+	timerAt     time.Time
+	queue       string // the queue the client says this champ select is for, e.g. "Ranked Solo/Duo"
+	clash       bool
+	enemies     []core.EnemyPick     // champions the other team has shown
+	posOf       map[string]string    // Clash: the opponents' registered positions, by puuid
+	gen         int                  // counts champ selects, so late answers from an earlier one are dropped
+	needCnt     string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
+	cntNext     map[string]time.Time // when a counter-pick fetch may be tried (again)
+	tier        *core.TierList
+	tierAt      time.Time
+	cl          clashState
+	pick        core.Pick
+	champ       core.Champion
+	key         string
+	build       *core.Build
+	state       string // waiting, pick, loading, build, unsupported, error
+	msg         string
+	seq         int
+	cache       map[string]cached
+	applied     map[string]core.Pref
+	hidden      bool // closed by the player for this champ select
+	dragged     bool // moved by the player for this champ select
+	lastSent    string
+	status      string
+	panelErr    string // why the panel window didn't start, for Check setup
+	onStatus    func(string)
+	w           webview.WebView
+	hwnd        uintptr
+	uiWanted    chan struct{}
+	uiOnce      sync.Once
 }
 
 // clashState: scouting from the League client (this round's opponent) and from the Clash helper's saved matches.
@@ -365,7 +366,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.mu.Lock()
 	a.gen++
 	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
-	a.inGame, a.moving, a.liningUp, a.level, a.skills = false, false, false, 0, [4]int{}
+	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
 	a.cl = clashState{}
 	a.timer, a.timerAt = core.Timer{}, time.Time{}
 	a.hidden, a.dragged = false, false
@@ -374,6 +375,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.banned = nil
 	show := a.cfg.ShowPanel
 	a.mu.Unlock()
+	a.endLiningUp()
 	log.Printf("champ select (%s, %s, clash=%v)", g.Queue, mode, plan.ClashClient)
 	go a.loadTier()
 	if plan.ClashClient { // Clash mode only when the client says this is a Clash game (core.PlanFor)
@@ -416,8 +418,9 @@ func (a *App) enterGame() bool {
 func (a *App) leaveGame() {
 	a.mu.Lock()
 	was := a.inGame
-	a.inGame, a.moving, a.liningUp, a.level, a.skills = false, false, false, 0, [4]int{}
+	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
 	a.mu.Unlock()
+	a.endLiningUp()
 	if was {
 		log.Printf("game ended")
 		go a.forcePush()

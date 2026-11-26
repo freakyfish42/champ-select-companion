@@ -13,7 +13,8 @@ func NextSkill(order []string, p Player, alias string) (idx int, spend bool) {
 	if p.Level < 1 {
 		return -1, false
 	}
-	freeR := FreeR(alias) || (p.Skills[3] > 0 && p.Level < 6) // R at level 1-5 can only have come for free
+	udyr := strings.EqualFold(alias, "Udyr")                          // four basic abilities: R from level 1, no 6/11/16
+	freeR := FreeR(alias) || (!udyr && p.Skills[3] > 0 && p.Level < 6) // R at level 1-5 can only have come for free
 	spent := p.Skills[0] + p.Skills[1] + p.Skills[2]
 	if !freeR {
 		spent += p.Skills[3]
@@ -34,7 +35,7 @@ func NextSkill(order []string, p Player, alias string) (idx int, spend bool) {
 		if planned[s] <= p.Skills[s] {
 			continue // you have this one
 		}
-		if canLevel(s, p.Skills[s], lv) {
+		if canLevel(s, p.Skills[s], lv, udyr) {
 			return i, spend
 		}
 	}
@@ -65,8 +66,12 @@ func SkillSlot(k string) int {
 	return -1
 }
 
-// canLevel: can an ability with `have` points get one more at level lv?
-func canLevel(slot, have, lv int) bool {
+// canLevel: can an ability with `have` points get one more at level lv? (Udyr: all four like a basic one,
+// up to 6 points.)
+func canLevel(slot, have, lv int, udyr bool) bool {
+	if udyr {
+		return have < 6 && lv >= 2*have+1
+	}
 	if slot == 3 {
 		return have < 3 && lv >= 6+5*have
 	}

@@ -37,6 +37,9 @@ func trayReady(a *App) {
 	moveCard := systray.AddMenuItem("Move the in-game card", "While a game runs: drag the card where you want it, then click Done")
 	markerOn := systray.AddMenuItemCheckbox("Skill marker on the ability bar", "A pulsing frame on your Q/W/E/R icon when it's time to level it (from the build's skill order)", !cfg.MarkerOff)
 	lineUp := systray.AddMenuItem("Line up the skill marker", "Only if the marker sits wrong (it places itself from League's HUD Scale): in a game, drag the blue box onto Q and the red box onto R, then click here again")
+	a.mu.Lock()
+	a.onLiningEnd = func() { lineUp.SetTitle("Line up the skill marker") }
+	a.mu.Unlock()
 	alphaMenu := systray.AddMenuItem("In-game card opacity", "How much of the game shows through the card")
 	alphas := map[int]*systray.MenuItem{}
 	for _, pct := range []int{100, 80, 60} {

@@ -31,12 +31,18 @@ func TestNextSkill(t *testing.T) {
 		{"Jayce at 6: Q can't go to 4 yet, so E", pl(6, 3, 1, 1, 2), "Jayce", 7, true},
 		{"Jayce at 1, R=1 free", pl(1, 0, 0, 0, 1), "Jayce", 0, true},
 		{"unknown free-R champ at level 2", pl(2, 1, 0, 0, 1), "", 1, true},
+		{"Udyr: R at level 1 is a normal point", pl(1, 0, 0, 0, 1), "Udyr", 0, false},
+		{"Udyr: R before 6 allowed", Player{Level: 3, Skills: [4]int{1, 1, 0, 0}}, "Udyr", 2, true},
 		{"not loaded", pl(0, 0, 0, 0, 0), "", -1, false},
 	} {
 		idx, spend := NextSkill(ord, c.p, c.alias)
 		if idx != c.idx || spend != c.spend {
 			t.Errorf("%s: got %d %v, want %d %v", c.name, idx, spend, c.idx, c.spend)
 		}
+	}
+	u := strings.Fields("R Q R W R E R Q R Q R Q W W W W E E")
+	if i, s := NextSkill(u, pl(3, 1, 0, 0, 1), "Udyr"); i != 2 || !s {
+		t.Error("Udyr: third point is R (rank 2 at level 3)", i, s)
 	}
 	if i, s := NextSkill(nil, pl(3, 0, 0, 0, 0), ""); i != -1 || !s {
 		t.Error("no order: nothing to point at, but a point to spend", i, s)

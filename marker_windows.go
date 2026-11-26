@@ -198,6 +198,7 @@ func (a *App) markerLoop() {
 			a.hud, a.hudOK = s, ok
 			a.mu.Unlock()
 			if changed {
+				go a.push()
 				if ok {
 					log.Printf("HUD scale %.0f (game.cfg)", s*100)
 				} else {
@@ -234,6 +235,11 @@ func (a *App) markerLoop() {
 					placeTopmost(marker.win[i], r, true)
 				}
 				lined = true
+			}
+			for _, h := range marker.win { // back after the game was out of front (they stay where the player put them)
+				if !isVisible(h) {
+					pShowWindow.Call(h, swShowNoActivate)
+				}
 			}
 			time.Sleep(100 * time.Millisecond)
 			continue
@@ -292,6 +298,11 @@ func (a *App) setLiningUp(on bool) bool {
 	gr, ok1 := clientRect(g)
 	q, ok2 := windowRect(marker.win[0])
 	r, ok3 := windowRect(marker.win[1])
+	if !isVisible(marker.win[0]) || !isVisible(marker.win[1]) {
+		// the boxes never came up (the game wasn't in front): nothing to save, keep lining up
+		messageBox("The boxes only show while the game is in front: click into the game, drag them onto Q and R, then choose “Done lining up the skill marker” again.", mbIconInfo)
+		return true
+	}
 	if g != 0 && ok1 && ok2 && ok3 {
 		s, err := core.SpotFrom(core.Rect(gr), core.Rect(q), core.Rect(r))
 		if err != nil {
@@ -322,6 +333,17 @@ func (a *App) setMarkerOff(off bool) {
 	a.mu.Unlock()
 	a.saveConfig()
 	go a.forcePush()
+}
+
+// endLiningUp: the game ended while lining up; the tray's item goes back to "Line up the skill marker".
+func (a *App) endLiningUp() {
+	a.mu.Lock()
+	was, f := a.liningUp, a.onLiningEnd
+	a.liningUp = false
+	a.mu.Unlock()
+	if was && f != nil {
+		f()
+	}
 }
 
 func (a *App) liningUpNow() bool {
