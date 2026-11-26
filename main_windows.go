@@ -99,6 +99,7 @@ type App struct {
 	mode       string
 	inGame     bool          // a game is loading or running
 	level      int           // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills     [4]int        // your points in Q W E R, from the same place
 	cardHidden bool          // hidden with the hotkey, for this game
 	moving     bool          // the player is moving the card (it takes clicks while moving)
 	cardH      int32         // the card's height as the page measured it (CSS px)
@@ -307,8 +308,8 @@ func (a *App) watch() {
 		if inGamePhase(phase) {
 			a.leaveSelect(phase)
 			if a.enterGame() {
-				if n, err := live.Level(); err == nil {
-					a.setLevel(n)
+				if p, err := live.Player(); err == nil {
+					a.setPlayer(p)
 				}
 				time.Sleep(time.Second)
 			} else {
@@ -357,7 +358,7 @@ func (a *App) enterSelect(g core.Game) {
 	a.mu.Lock()
 	a.gen++
 	a.inSelect, a.phase, a.mode, a.queue, a.clash, a.enemies, a.posOf = true, "ChampSelect", mode, g.Queue, plan.ClashClient, nil, nil
-	a.inGame, a.moving, a.level = false, false, 0
+	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
 	a.cl = clashState{}
 	a.timer, a.timerAt = core.Timer{}, time.Time{}
 	a.hidden, a.dragged = false, false
@@ -390,7 +391,7 @@ func (a *App) enterGame() bool {
 	a.mu.Lock()
 	first := !a.inGame
 	if first {
-		a.inGame, a.level, a.cardHidden, a.moving = true, 0, false, false
+		a.inGame, a.level, a.skills, a.cardHidden, a.moving = true, 0, [4]int{}, false, false
 	}
 	ok := a.cardReady()
 	name := a.champ.Name
@@ -408,7 +409,7 @@ func (a *App) enterGame() bool {
 func (a *App) leaveGame() {
 	a.mu.Lock()
 	was := a.inGame
-	a.inGame, a.moving, a.level = false, false, 0
+	a.inGame, a.moving, a.level, a.skills = false, false, 0, [4]int{}
 	a.mu.Unlock()
 	if was {
 		log.Printf("game ended")
@@ -416,10 +417,10 @@ func (a *App) leaveGame() {
 	}
 }
 
-func (a *App) setLevel(n int) {
+func (a *App) setPlayer(p core.Player) {
 	a.mu.Lock()
-	changed := n != a.level
-	a.level = n
+	changed := p.Level != a.level || p.Skills != a.skills
+	a.level, a.skills = p.Level, p.Skills
 	a.mu.Unlock()
 	if changed {
 		go a.push()
@@ -740,6 +741,8 @@ type view struct {
 	Bans    []banView       `json:"bans,omitempty"` // most banned (EUW Emerald+), until you lock in
 	Clash   *clashView      `json:"clash,omitempty"`
 	Level   int             `json:"level,omitempty"`  // in game: your level
+	Next    int             `json:"next"`             // in game: the skill order's next point (-1: none)
+	Spend   bool            `json:"spend,omitempty"`  // in game: you have a skill point to spend now
 	Moving  bool            `json:"moving,omitempty"` // in game: the card is being moved
 	Hotkey  string          `json:"hotkey,omitempty"`
 	Alpha   int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
@@ -761,8 +764,9 @@ func (a *App) view() view {
 		if !a.cardReady() {
 			return view{State: "ingame-none", Version: version}
 		}
+		next, spend := core.NextSkill(a.build.Skills.Order, core.Player{Level: a.level, Skills: a.skills}, a.champ.Alias)
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
-			Build: a.build.Raw, Level: a.level, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
+			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
 	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {

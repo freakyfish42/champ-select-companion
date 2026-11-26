@@ -67,14 +67,21 @@ body.ig .top,body.ig .foot,body.ig .test{display:none}
 body.ig{background:rgba(10,17,28,var(--ca,1));border-color:rgba(200,170,110,.35);border-radius:8px}
 body.ig .sq span{background:rgba(19,32,52,var(--ca,1))}body.ig .sq span.r{background:rgba(42,24,32,var(--ca,1))}
 body.ig main{padding:6px 8px 6px;overflow:hidden;flex:none}
-.igh{display:flex;align-items:center;gap:6px;font-size:13px;line-height:1}
+.igh{display:flex;align-items:center;gap:6px;font-size:13px;line-height:1;min-height:28px}
 .igh img{width:22px;height:22px;border-radius:5px}
 .igh .lv{font-weight:700;color:var(--gold)}
 .igh .mx{margin-left:auto;color:var(--mute);font-weight:600;letter-spacing:.02em}
 .sq{display:grid;grid-template-columns:repeat(18,1fr);gap:1px;margin:5px 0}
 .sq span{display:grid;place-items:center;height:17px;border-radius:3px;background:#132034;font:700 10.5px Inter,sans-serif;color:var(--mute)}
 .sq span.q{color:#9fc4ff}.sq span.w{color:#9ee6b0}.sq span.e{color:#f0d08a}.sq span.r{color:#ff9f9f;background:#2a1820}
-.sq span.done{opacity:.3}.sq span.now{outline:1.5px solid var(--gold);opacity:1}
+.sq span.done{opacity:.3}
+/* the next skill point: loud while you have one to spend, quiet while it's for your next level */
+.nx{display:inline-flex;align-items:center;gap:5px;font:600 11px Inter,sans-serif;color:var(--mute)}
+.nx b{display:grid;place-items:center;width:20px;height:20px;border-radius:4px;font:800 12px Inter,sans-serif;color:#0a0f18;background:var(--k);opacity:.55}
+.nx.go{color:var(--k);font-size:13px}.nx.go b{width:28px;height:28px;font-size:17px;opacity:1;border-radius:6px;animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--k),0 0 6px 1px var(--k)}50%{box-shadow:0 0 0 3px var(--k),0 0 14px 4px var(--k)}}
+.sq span.nxt{color:#0a0f18!important;background:var(--k)!important;opacity:.6}
+.sq span.nxt.go{opacity:1;animation:pulse 1.1s ease-in-out infinite;position:relative;z-index:1}
 .its{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
 .its img{width:25px;height:25px;border-radius:4px;flex:none}
 .its i{width:1px;height:18px;background:var(--line);margin:0 4px}
@@ -212,10 +219,15 @@ function ingame(v){
   const id=(b&&b.id)||v.alias,lv=v.level||0,ord=(b&&b.skills&&b.skills.order)||[];
   const ic=x=>x&&x.items?x.items.map(i=>ver?img(`${DD}${ver}/img/item/${Number(i.id)}.png`,'',i.name).replace('<img ',`<img data-name="${esc(i.name)}" `):'').join(''):'';
   const groups=[ic(b&&b.starter),ic(b&&b.core),ic(b&&b.boots)].filter(Boolean);
-  const now=lv&&ord[lv-1]?`Lv ${lv} · ${esc(ord[lv-1])}`:lv?`Lv ${lv}`:esc(v.name||'');
+  /* which point is next comes from the app (your points in Q W E R against the plan); go: you have one to spend */
+  const nx=typeof v.next==='number'&&v.next>=0&&v.next<ord.length?v.next:-1,go=nx>=0&&!!v.spend;
+  const kc={q:'#9fc4ff',w:'#9ee6b0',e:'#f0d08a',r:'#ff9f9f'},key=nx>=0?String(ord[nx]):'',col=kc[key.toLowerCase()]||'#c8aa6e';
+  const badge=nx>=0?`<span class="nx${go?' go':''}" style="--k:${col}">${go?'Level up':'Next'} <b>${esc(key)}</b></span>`:'';
+  const now=lv?`Lv ${lv}`:esc(v.name||'');
   const mx=b&&b.max&&b.max.order?b.max.order.map(esc).join(' › '):'';
-  return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span><span class="mx" id="mx" data-def="${esc(mx)}">${mx}</span></div>`
-    +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span data-name="Level ${i+1}: ${esc(k)}" class="${esc(String(k).toLowerCase())}${lv&&i<lv-1?' done':''}${lv&&i===lv-1?' now':''}">${esc(k)}</span>`).join('')}</div>`:'')
+  const done=i=>lv&&(nx>=0?i<nx:i<lv);
+  return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span>${badge}<span class="mx" id="mx" data-def="${esc(mx)}">${mx}</span></div>`
+    +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span data-name="Level ${i+1}: ${esc(k)}" class="${esc(String(k).toLowerCase())}${done(i)?' done':''}${i===nx?' nxt'+(go?' go':''):''}"${i===nx?` style="--k:${col}"`:''}>${esc(k)}</span>`).join('')}</div>`:'')
     +(groups.length?`<div class="its">${groups.join('<i></i>')}</div>`:'')
     +(v.moving?`<div class="mv"><span>Drag it where you want it</span><button class="ap" id="mvdone">Done</button></div>`:'')}
 

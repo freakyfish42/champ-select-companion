@@ -52,6 +52,9 @@ type Build struct {
 	Runes    []RunePage      `json:"runes"`
 	Summs    []SpellPair     `json:"summs"`
 	Vs       []VsEntry       `json:"vs"` // this champion's win rate against each lane opponent
+	Skills   struct {
+		Order []string `json:"order"` // the point for each level, "Q" "W" "E" "R"
+	} `json:"skills"`
 	Raw      json.RawMessage `json:"-"`
 }
 

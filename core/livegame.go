@@ -14,8 +14,8 @@ import (
 // LiveURL is Riot's Live Client Data API: the running game serves it on the player's own PC.
 const LiveURL = "https://127.0.0.1:2999"
 
-// Live reads the running game. The app asks it for one thing only: your own champion's level, which you
-// can see on your own screen anyway. Nothing about other players, and it only reads.
+// Live reads the running game. The app asks it for one thing only: your own champion (level and skill points),
+// which you can see on your own screen anyway. Nothing about other players, and it only reads.
 type Live struct {
 	base string
 	http *http.Client
@@ -31,26 +31,51 @@ func NewLiveURL(base string, hc *http.Client) *Live {
 	return &Live{base: strings.TrimRight(base, "/"), http: hc}
 }
 
-// Level is your champion's level (1 to 18). An error means the game isn't loaded yet (loading screen).
-func (l *Live) Level() (int, error) {
+// Player is what the card shows about you: your level and how many points are in Q, W, E and R
+// (both on your own screen anyway).
+type Player struct {
+	Level  int
+	Skills [4]int // Q, W, E, R
+}
+
+// Player reads your own champion. An error means the game isn't loaded yet (loading screen).
+func (l *Live) Player() (Player, error) {
 	resp, err := l.http.Get(l.base + "/liveclientdata/activeplayer")
 	if err != nil {
-		return 0, err
+		return Player{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return 0, &HTTPError{Status: resp.StatusCode}
+		return Player{}, &HTTPError{Status: resp.StatusCode}
+	}
+	type ab struct {
+		AbilityLevel int `json:"abilityLevel"`
 	}
 	var p struct {
-		Level int `json:"level"`
+		Level     int `json:"level"`
+		Abilities struct {
+			Q, W, E, R ab
+		} `json:"abilities"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&p); err != nil {
-		return 0, err
+		return Player{}, err
 	}
 	if p.Level < 1 || p.Level > 18 {
-		return 0, errNotLoaded
+		return Player{}, errNotLoaded
 	}
-	return p.Level, nil
+	out := Player{Level: p.Level, Skills: [4]int{p.Abilities.Q.AbilityLevel, p.Abilities.W.AbilityLevel, p.Abilities.E.AbilityLevel, p.Abilities.R.AbilityLevel}}
+	for i, n := range out.Skills {
+		if n < 0 || n > 6 {
+			out.Skills[i] = 0
+		}
+	}
+	return out, nil
+}
+
+// Level is your champion's level (1 to 18).
+func (l *Live) Level() (int, error) {
+	p, err := l.Player()
+	return p.Level, err
 }
 
 // Window modes in League's game.cfg ([General] WindowMode=).
