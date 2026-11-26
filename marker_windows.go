@@ -194,8 +194,16 @@ func (a *App) markerLoop() {
 		if in && time.Since(hudAt) > 5*time.Second {
 			s, ok := hudScale()
 			a.mu.Lock()
+			changed := s != a.hud || ok != a.hudOK || hudAt.IsZero()
 			a.hud, a.hudOK = s, ok
 			a.mu.Unlock()
+			if changed {
+				if ok {
+					log.Printf("HUD scale %.0f (game.cfg)", s*100)
+				} else {
+					log.Printf("HUD scale not found in game.cfg: the skill marker needs lining up")
+				}
+			}
 			hudAt = time.Now()
 		}
 		a.mu.Lock()
