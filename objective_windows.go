@@ -111,7 +111,7 @@ func (o *objectiveBox) setFont(px int32) {
 // objectiveRect: centred at the top of the game, sized by its height like League's own HUD.
 func objectiveRect(game rect) rect {
 	h := float64(game.Bottom - game.Top)
-	bw, bh := math.Round(h*0.30), math.Round(h*0.055)
+	bw, bh := math.Round(h*0.36), math.Round(h*0.055)
 	mid := float64(game.Left+game.Right) / 2
 	l := int32(math.Round(mid - bw/2))
 	t := game.Top + int32(math.Round(h*objectiveTopAt))
@@ -134,11 +134,12 @@ func (a *App) objectiveLoop() {
 			continue
 		}
 		a.mu.Lock()
-		on := a.inGame && a.cardReady() && !a.cardHidden && !a.cfg.ObjectivesOff && a.queue != "Swiftplay"
+		clockOn := a.inGame && a.cardReady() // the card uses the clock too (first clear until 5:00)
+		on := clockOn && !a.cardHidden && !a.cfg.ObjectivesOff && a.queue != "Swiftplay"
 		live := a.live
 		panel := a.hwnd
 		a.mu.Unlock()
-		if on && live != nil && time.Since(clockAt) > time.Second {
+		if clockOn && live != nil && time.Since(clockAt) > time.Second {
 			if t, err := live.GameTime(); err == nil {
 				first := clockAt.IsZero()
 				clock, clockAt = t, time.Now()
@@ -167,7 +168,7 @@ func (a *App) objectiveLoop() {
 			if isVisible(win) {
 				hideWindow(win)
 			}
-			if !on && !clockAt.IsZero() {
+			if !clockOn && !clockAt.IsZero() {
 				clockAt = time.Time{} // a new game starts from a fresh clock
 				a.mu.Lock()
 				a.clock, a.clockAt = 0, time.Time{}
@@ -178,7 +179,7 @@ func (a *App) objectiveLoop() {
 		}
 		r := objectiveRect(gr)
 		if r != shaped {
-			objective.setFont(int32(float64(r.Bottom-r.Top) * 0.62))
+			objective.setFont(int32(float64(r.Bottom-r.Top) * 0.58))
 			round := uintptr(max32(8, (r.Bottom-r.Top)/3))
 			rgn, _, _ := pCreateRoundRectRgn.Call(0, 0, uintptr(r.Right-r.Left+1), uintptr(r.Bottom-r.Top+1), round, round)
 			pSetWindowRgn.Call(win, rgn, 1)

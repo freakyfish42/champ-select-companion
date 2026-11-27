@@ -476,7 +476,7 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	// only the game clock and the fixed schedule
 	ob, _ := os.ReadFile("../objective_windows.go")
 	os_ := string(ob)
-	if !strings.Contains(os_, "pCreateWindowExW.Call(markerEx(false)") || !strings.Contains(os_, "a.inGame && a.cardReady() && !a.cardHidden") ||
+	if !strings.Contains(os_, "pCreateWindowExW.Call(markerEx(false)") || !strings.Contains(os_, "clockOn := a.inGame && a.cardReady()") || !strings.Contains(os_, "on := clockOn && !a.cardHidden") ||
 		!strings.Contains(os_, "live.GameTime()") || !strings.Contains(os_, "core.Countdown(") {
 		t.Error("the objective countdown must be click-through, only where the card shows, from the game clock and the fixed schedule")
 	}

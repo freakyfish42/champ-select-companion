@@ -113,7 +113,10 @@ type App struct {
 	live        *core.Live   // Riot's Live Client Data API (your own player and the game clock)
 	jungle      *core.Jungle // the champion\'s common first clears (junglers only), from the build site
 	jungleFor   string       // which champion a.jungle is for
-	clock       float64      // the game clock at clockAt (objective countdown), 0 before the first read
+	jungleAt    time.Time    // when a.jungle was read
+	jungleTry   string       // the last champion a read was started for, and when (no retry storm)
+	jungleTryAt time.Time
+	clock       float64 // the game clock at clockAt (objective countdown), 0 before the first read
 	clockAt     time.Time
 	hud         float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
 	hudOK       bool
@@ -564,6 +567,9 @@ func (a *App) onPick(p core.Pick) {
 			a.key, a.champ, a.build = key, ch, nil
 			if c, ok := a.cache[key]; ok && time.Since(c.at) < 30*time.Minute {
 				a.build, a.state = c.b, "build"
+				if alias := a.jungleWanted(); alias != "" {
+					go a.fetchJungle(alias)
+				}
 			} else {
 				a.state = "loading"
 				a.seq++
@@ -589,12 +595,31 @@ func (a *App) fetch(seq int, key string, ch core.Champion, role string) {
 			a.build, a.state, a.msg = b, "build", ""
 		}
 	}
-	jg := err == nil && seq == a.seq && (role == "jungle" || b.Position == "jungle") && a.jungleFor != ch.Alias
+	jg := ""
+	if err == nil && seq == a.seq {
+		jg = a.jungleWanted()
+	}
 	a.mu.Unlock()
-	if jg {
-		go a.fetchJungle(ch.Alias)
+	if jg != "" {
+		go a.fetchJungle(jg)
 	}
 	a.push()
+}
+
+// jungleWanted: the champion whose first clears should be (re)loaded now, or "". The site collects all day,
+// so they're read again after an hour, and after a failed try only once every few minutes. Call with a.mu held.
+func (a *App) jungleWanted() string {
+	if a.build == nil || a.roleOf() != "jungle" || a.champ.Alias == "" {
+		return ""
+	}
+	if a.jungleFor == a.champ.Alias && time.Since(a.jungleAt) < time.Hour {
+		return ""
+	}
+	if a.jungleTry == a.champ.Alias && time.Since(a.jungleTryAt) < 3*time.Minute {
+		return ""
+	}
+	a.jungleTry, a.jungleTryAt = a.champ.Alias, time.Now()
+	return a.champ.Alias
 }
 
 // fetchJungle reads the champion's common first clears (Riot match data on the build site).
@@ -605,7 +630,7 @@ func (a *App) fetchJungle(alias string) {
 		return
 	}
 	a.mu.Lock()
-	a.jungle, a.jungleFor = j, alias
+	a.jungle, a.jungleFor, a.jungleAt = j, alias, time.Now()
 	a.mu.Unlock()
 	a.push()
 }
