@@ -58,6 +58,11 @@ button.ap:disabled{opacity:.6;cursor:default}
 .rl{font-size:10.5px;color:var(--gold);border:1px solid var(--line);border-radius:5px;padding:0 5px;white-space:nowrap}
 .cc{display:flex;flex-wrap:wrap;gap:3px 10px}.cc span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;white-space:nowrap}.cc img{width:20px;height:20px;border-radius:4px}.cc small{color:var(--mute)}
 .bans{display:flex;flex-direction:column;gap:4px}.bans div{display:flex;align-items:center;gap:6px;font-size:12px}.bans img{width:24px;height:24px;border-radius:5px;border:1px solid #6e3434}.bans small{color:var(--mute)}
+.et{margin:6px 0 4px}.ei{display:flex;gap:5px}.ei span{cursor:default;border-radius:7px;outline:2px solid transparent}
+.ei span.on{outline-color:var(--gold)}.ei img{display:block;width:38px;height:38px;border-radius:7px}
+.ec{margin-top:6px;padding:6px 9px;border:1px dashed rgba(200,170,110,.45);border-radius:10px;font-size:12px}.ec.mute,.ec .mute{color:var(--mute);font-size:11.5px}
+.ec h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}.ec h4 small{color:var(--mute);font-weight:500}
+.ec div{display:flex;align-items:center;gap:6px;padding:2px 0}.ec img{width:22px;height:22px;border-radius:5px}.ec span{flex:1}.ec small{color:var(--mute)}
 .ci{margin:8px 0 2px;padding:6px 9px;border:1px dashed rgba(200,170,110,.45);border-radius:10px}
 .ci h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}
 .ci div{display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0}.ci img{width:22px;height:22px;border-radius:5px}.ci span{flex:1}.ci small{color:var(--mute)}
@@ -97,6 +102,7 @@ body.ig main{padding:6px 8px 6px;overflow:hidden;flex:none}
 .jg{margin:8px 0 2px;padding:6px 9px;border:1px dashed rgba(200,170,110,.45);border-radius:10px;font-size:12px}
 .jg h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}.jg h4 small{color:var(--mute);font-weight:500}
 .jg .rt{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:2px 0}.jg .rt b{font-weight:600}.jg .rt i{color:var(--mute);font-style:normal}
+.ej h4{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.ej h4 img{width:18px;height:18px;border-radius:4px}
 .jg .rt em{margin-left:auto;font-style:normal;color:var(--mute);font-size:11px}.jg .en{color:#ff9f9f}
 body.ig .jg{margin:5px 0 0;padding:4px 7px;font-size:11px}body.ig .jg .rt+.rt{display:none}
 .mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font-size:11px;color:var(--gold)}
@@ -190,6 +196,30 @@ function jungle(j,card){
   const stop=x=>`<b class="${/^Enemy /.test(x)?'en':''}">${esc(x)}</b>`;
   return `<div class="jg"><h4>First clear · ${side}${j.mine?'':' <small>(your side: no data yet)</small>'}${card?'':` <small>at 1-2-3-4 min · ${num(j.games)} games</small>`}</h4>`
     +j.paths.map(p=>`<div class="rt">${p.path.map(stop).join('<i>→</i>')}<em>${pct(p.share)}</em></div>`).join('')+`</div>`}
+function enemyJungle(j){
+  if(!j||!j.paths||!j.paths.length)return '';
+  const p=j.paths[0],stop=x=>`<b class="${/^Enemy /.test(x)?'en':''}">${esc(x.replace(/^Enemy /,'Your '))}</b>`;
+  return `<div class="jg ej"><h4>${j.champId&&ver?img(`${DD}${ver}/img/champion/${j.champId}.png`,'',j.champ):''}Enemy ${esc(j.champ)}${j.sure?'':' <small>(likely jungler)</small>'} usually starts <small>· ${j.side==='red'?'red':'blue'} side · ${num(j.games)} games</small></h4>`
+    +`<div class="rt">${p.path.map(stop).join('<i>→</i>')}<em>${pct(p.share)}</em></div></div>`}
+/* the enemy picks: hover one for 5 champions that beat it (its matchups on the site, EUW Emerald+) */
+let eHover='';
+function enemyCard(e){
+  if(!e)return '<div class="ec mute">Hover an enemy for 5 counter-picks.</div>';
+  const role=e.role?` <small>${esc(e.role)}${e.sure?'':'?'}</small>`:'';
+  if(!e.ready)return `<div class="ec"><h4>Good into ${esc(e.name)}${role}</h4><div class="mute">Loading…</div></div>`;
+  if(!e.counters||!e.counters.length)return `<div class="ec"><h4>Good into ${esc(e.name)}${role}</h4><div class="mute">Not enough games for counters yet.</div></div>`;
+  return `<div class="ec"><h4>Good into ${esc(e.name)}${role}</h4>${e.counters.map(x=>`<div>${x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<span>${esc(x.name)}</span><b class="hi">${pct(x.wr)}</b><small>${num(x.play)} games</small></div>`).join('')}</div>`}
+function enemies(v){
+  const es=v.enemies||[];if(!es.length)return '';
+  window._enemies=es;
+  const cur=es.find(e=>e.id===eHover);
+  return `<div class="et"><h3>Enemy team</h3><div class="ei">${es.map(e=>`<span data-e="${esc(e.id)}" class="${e.id===eHover?'on':''}" title="${esc(e.name)}">${ver?img(`${DD}${ver}/img/champion/${e.id}.png`,'',e.name):esc(e.name)}</span>`).join('')}</div><div id="ecard">${enemyCard(cur)}</div></div>`}
+document.addEventListener('mouseover',ev=>{
+  const t=ev.target.closest&&ev.target.closest('[data-e]');if(!t)return;
+  eHover=t.dataset.e;
+  document.querySelectorAll('.ei [data-e]').forEach(x=>x.classList.toggle('on',x.dataset.e===eHover));
+  const c=document.getElementById('ecard');if(c)c.innerHTML=enemyCard((window._enemies||[]).find(e=>e.id===eHover));
+});
 function bans(v){
   const b=v.bans||[];if(!b.length)return '';
   return `<h3>Most banned <small style="color:var(--mute);font-weight:400;text-transform:none;letter-spacing:0">· EUW Emerald+</small></h3><div class="bn">${b.map(x=>
@@ -267,14 +297,14 @@ function render(v){
   if(v.state==='ingame-none'){V=v;$('main').innerHTML='';return}
   const k=(v.alias||'')+':'+(v.role||'');if(V&&k!==(V.alias||'')+':'+(V.role||''))notes={};
   V=v;head(v);const m=$('main');
-  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=bans(v)+`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
+  if(v.state==='waiting'||v.state==='pick'){m.innerHTML=enemies(v)+bans(v)+`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
   if(v.state==='unsupported'){m.innerHTML=`<div class="empty">No suggestions in this mode. The stats are for ranked Summoner's Rift, so they'd be wrong for ${v.mode==='ARAM'?'ARAM':v.mode==='CHERRY'?'Arena':'this mode'}.</div>`;return}
-  if(v.state==='loading'){m.innerHTML=bans(v)+`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
+  if(v.state==='loading'){m.innerHTML=enemies(v)+bans(v)+`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
   if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
   const ro=v.runeOrder||[],so=v.spellOrder||[];
   const ag=age(b);$('ver').textContent=(b.region&&b.region!=='EUW'?'All regions (op.gg EUW is down)':'EUW · Emerald+')+(ag?' · '+ag:'');$('ver').title='App '+(v.version||'');
-  m.innerHTML=bans(v)+matchup(v.matchup)+counters(v)+jungle(v.jungle,false)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+  m.innerHTML=enemies(v)+bans(v)+matchup(v.matchup)+counters(v)+jungle(v.jungle,false)+enemyJungle(v.enemyJungle)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
     +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
     +skills(b)+clash(v.clash);
   bindClash();

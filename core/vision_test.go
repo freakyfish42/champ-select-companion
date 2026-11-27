@@ -440,7 +440,7 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	if i < 0 || j < i {
 		t.Fatal("view() must start with the in-game card")
 	}
-	for _, bad := range []string{"Matchup", "Clash", "enemies", "Counter", "posOf", "cl."} {
+	for _, bad := range []string{"Matchup", "Clash", "enemies", "Counter", "posOf", "cl.", "EnemyJg", "enemyJungleView", "EnemyIn"} {
 		if strings.Contains(s[i:j], bad) {
 			t.Errorf("the in-game card must not show %s", bad)
 		}

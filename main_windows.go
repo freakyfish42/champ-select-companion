@@ -103,20 +103,17 @@ type App struct {
 	inSelect    bool
 	phase       string
 	mode        string
-	inGame      bool         // a game is loading or running
-	level       int          // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	skills      [4]int       // your points in Q W E R, from the same place
-	cardHidden  bool         // hidden with the hotkey, for this game
-	moving      bool         // the player is moving the card (it takes clicks while moving)
-	liningUp    bool         // the player is lining up the skill marker over the ability bar
-	onLiningEnd func()       // set by the tray: lining up ended by itself (the game ended)
-	live        *core.Live   // Riot's Live Client Data API (your own player and the game clock)
-	jungle      *core.Jungle // the champion\'s common first clears (junglers only), from the build site
-	jungleFor   string       // which champion a.jungle is for
-	jungleAt    time.Time    // when a.jungle was read
-	jungleTry   string       // the last champion a read was started for, and when (no retry storm)
-	jungleTryAt time.Time
-	clock       float64 // the game clock at clockAt (objective countdown), 0 before the first read
+	inGame      bool                // a game is loading or running
+	level       int                 // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills      [4]int              // your points in Q W E R, from the same place
+	cardHidden  bool                // hidden with the hotkey, for this game
+	moving      bool                // the player is moving the card (it takes clicks while moving)
+	liningUp    bool                // the player is lining up the skill marker over the ability bar
+	onLiningEnd func()              // set by the tray: lining up ended by itself (the game ended)
+	live        *core.Live          // Riot's Live Client Data API (your own player and the game clock)
+	jgCache     map[string]*jgEntry // first clears per champion (yours, and the enemy jungler's in champ select)
+	needJg      []string            // set by view(): champions whose first clears to (re)load
+	clock       float64             // the game clock at clockAt (objective countdown), 0 before the first read
 	clockAt     time.Time
 	hud         float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
 	hudOK       bool
@@ -132,6 +129,7 @@ type App struct {
 	posOf       map[string]string    // Clash: the opponents' registered positions, by puuid
 	gen         int                  // counts champ selects, so late answers from an earlier one are dropped
 	needCnt     string               // set by view(): a lane opponent's build to fetch for counter-pick ideas
+	needCnts    []string             // set by view(): the enemy picks' builds (their matchups give the counters on hover)
 	cntNext     map[string]time.Time // when a counter-pick fetch may be tried (again)
 	tier        *core.TierList
 	tierAt      time.Time
@@ -567,9 +565,6 @@ func (a *App) onPick(p core.Pick) {
 			a.key, a.champ, a.build = key, ch, nil
 			if c, ok := a.cache[key]; ok && time.Since(c.at) < 30*time.Minute {
 				a.build, a.state = c.b, "build"
-				if alias := a.jungleWanted(); alias != "" {
-					go a.fetchJungle(alias)
-				}
 			} else {
 				a.state = "loading"
 				a.seq++
@@ -595,34 +590,29 @@ func (a *App) fetch(seq int, key string, ch core.Champion, role string) {
 			a.build, a.state, a.msg = b, "build", ""
 		}
 	}
-	jg := ""
-	if err == nil && seq == a.seq {
-		jg = a.jungleWanted()
-	}
 	a.mu.Unlock()
-	if jg != "" {
-		go a.fetchJungle(jg)
-	}
 	a.push()
 }
 
-// jungleWanted: the champion whose first clears should be (re)loaded now, or "". The site collects all day,
-// so they're read again after an hour, and after a failed try only once every few minutes. Call with a.mu held.
-func (a *App) jungleWanted() string {
-	if a.build == nil || a.roleOf() != "jungle" || a.champ.Alias == "" {
-		return ""
-	}
-	if a.jungleFor == a.champ.Alias && time.Since(a.jungleAt) < time.Hour {
-		return ""
-	}
-	if a.jungleTry == a.champ.Alias && time.Since(a.jungleTryAt) < 3*time.Minute {
-		return ""
-	}
-	a.jungleTry, a.jungleTryAt = a.champ.Alias, time.Now()
-	return a.champ.Alias
+type jgEntry struct {
+	j         *core.Jungle
+	at, tryAt time.Time
 }
 
-// fetchJungle reads the champion's common first clears (Riot match data on the build site).
+// jungleOf: a champion's first clears if loaded; asks push() to (re)load them when missing or over an hour old
+// (the site collects all day). Call with a.mu held.
+func (a *App) jungleOf(alias string) *core.Jungle {
+	e := a.jgCache[alias]
+	if e == nil || e.j == nil || time.Since(e.at) > time.Hour {
+		a.needJg = append(a.needJg, alias)
+	}
+	if e == nil {
+		return nil
+	}
+	return e.j
+}
+
+// fetchJungle reads a champion's common first clears (Riot match data on the build site).
 func (a *App) fetchJungle(alias string) {
 	j, err := core.FetchJungle(a.web, core.SiteURL, alias)
 	if err != nil {
@@ -630,33 +620,80 @@ func (a *App) fetchJungle(alias string) {
 		return
 	}
 	a.mu.Lock()
-	a.jungle, a.jungleFor, a.jungleAt = j, alias, time.Now()
+	if a.jgCache == nil {
+		a.jgCache = map[string]*jgEntry{}
+	}
+	e := a.jgCache[alias]
+	if e == nil {
+		e = &jgEntry{}
+		a.jgCache[alias] = e
+	}
+	e.j, e.at = j, time.Now()
 	a.mu.Unlock()
 	a.push()
 }
 
-// jungleView: the routes for your side, when you're the jungler on this champion.
-func (a *App) jungleView() *jungleView {
-	if a.roleOf() != "jungle" || a.jungle == nil || a.jungleFor != a.champ.Alias {
-		return nil
-	}
-	s, side := a.jungle.For(a.pick.Side)
+// sideView: the top routes of one side for the panel or card.
+func sideView(j *core.Jungle, want string, n int) *jungleView {
+	s, side := j.For(want)
 	if s == nil || len(s.Paths) == 0 {
 		return nil
 	}
-	n := len(s.Paths)
-	if n > 2 {
-		n = 2
+	if len(s.Paths) < n {
+		n = len(s.Paths)
 	}
-	return &jungleView{Side: side, Mine: side == a.pick.Side || a.pick.Side == "", Games: s.Games, Patch: a.jungle.Patch, Paths: s.Paths[:n]}
+	return &jungleView{Side: side, Mine: side == want || want == "", Games: s.Games, Patch: j.Patch, Paths: s.Paths[:n]}
+}
+
+// jungleView: your own first clears, when you're the jungler.
+func (a *App) jungleView() *jungleView {
+	if a.roleOf() != "jungle" || a.champ.Alias == "" {
+		return nil
+	}
+	j := a.jungleOf(a.champ.Alias)
+	if j == nil {
+		return nil
+	}
+	return sideView(j, a.pick.Side, 2)
+}
+
+// enemyJungleView (champ select only, never in game): the enemy jungler's most common first clear on their side.
+func (a *App) enemyJungleView(en []core.Champion, known []string) *jungleView {
+	i, sure := core.EnemyIn("jungle", en, known, a.tier)
+	if i < 0 {
+		return nil
+	}
+	j := a.jungleOf(en[i].Alias)
+	if j == nil {
+		return nil
+	}
+	other := map[string]string{"blue": "red", "red": "blue"}[a.pick.Side]
+	v := sideView(j, other, 1)
+	if v == nil {
+		return nil
+	}
+	v.Champ, v.ChampID, v.Sure = en[i].Name, en[i].Alias, sure
+	return v
+}
+
+type enemyView struct {
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Role     string         `json:"role"`
+	Sure     bool           `json:"sure"`
+	Ready    bool           `json:"ready"` // its build is loaded (Counters may still be empty: too few games)
+	Counters []core.VsEntry `json:"counters,omitempty"`
 }
 
 type jungleView struct {
-	Side  string            `json:"side"`
-	Mine  bool              `json:"mine"` // false: your side has no data yet, this is the other side's
-	Games int               `json:"games"`
-	Patch string            `json:"patch"`
-	Paths []core.JunglePath `json:"paths"`
+	Champ   string            `json:"champ,omitempty"` // the enemy jungler (enemy view only)
+	ChampID string            `json:"champId,omitempty"`
+	Sure    bool              `json:"sure,omitempty"` // that it's their jungler is clear, not just a likely guess
+	Side    string            `json:"side"`
+	Mine    bool              `json:"mine"` // false: your side has no data yet, this is the other side's
+	Games   int               `json:"games"`
+	Patch   string            `json:"patch"`
+	Paths   []core.JunglePath `json:"paths"`
 }
 
 // loadTier keeps the site's tier list (role shares, for guessing enemy roles) for 3 hours.
@@ -833,10 +870,12 @@ type view struct {
 	MarkerHint bool            `json:"markerHint,omitempty"` // in game: the skill marker isn't lined up yet
 	Moving     bool            `json:"moving,omitempty"`     // in game: the card is being moved
 	Hotkey     string          `json:"hotkey,omitempty"`
-	Alpha      int             `json:"alpha,omitempty"`  // in game: the card's opacity in percent
-	Size       int             `json:"size,omitempty"`   // in game: the card's size in percent
-	Jungle     *jungleView     `json:"jungle,omitempty"` // junglers: common first clears for your side
-	EarlyGame  bool            `json:"early,omitempty"`  // in game: before 5:00 (the card shows the first clear)
+	Alpha      int             `json:"alpha,omitempty"`       // in game: the card's opacity in percent
+	Size       int             `json:"size,omitempty"`        // in game: the card's size in percent
+	Jungle     *jungleView     `json:"jungle,omitempty"`      // junglers: common first clears for your side
+	EnemyJg    *jungleView     `json:"enemyJungle,omitempty"` // champ select only: the enemy jungler's usual first clear
+	Enemies    []enemyView     `json:"enemies,omitempty"`     // champ select, until you lock in: enemy picks with counters
+	EarlyGame  bool            `json:"early,omitempty"`       // in game: before 5:00 (the card shows the first clear)
 }
 
 func (a *App) roleOf() string {
@@ -864,22 +903,23 @@ func (a *App) view() view {
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
 		v.Name, v.Alias = "", ""
 	}
+	var en []core.Champion
+	var known []string
+	for _, e := range a.enemies {
+		if ch, ok := a.champs[e.ChampionID]; ok {
+			en = append(en, ch)
+			known = append(known, a.posOf[e.Puuid])
+		}
+	}
 	if a.build != nil && a.state == "build" {
 		v.Build = a.build.Raw
 		v.Pref = a.prefs.Get(a.prefKey())
 		v.Runes, v.Spells = core.Order(a.build, v.Pref)
 		v.Applied = a.applied[a.prefKey()]
 		v.Jungle = a.jungleView()
-		var en []core.Champion
-		var known []string
-		for _, e := range a.enemies {
-			if ch, ok := a.champs[e.ChampionID]; ok {
-				en = append(en, ch)
-				known = append(known, a.posOf[e.Puuid])
-			}
-		}
 		m := core.LaneMatchup(a.build, a.roleOf(), en, known, a.tier)
 		v.Matchup = &m
+		v.EnemyJg = a.enemyJungleView(en, known)
 		if m.Opp != "" && m.OppID != "" && m.Role != "" && !a.pick.Locked {
 			ck := m.OppID + ":" + m.Role
 			if c, ok := a.cache[ck]; ok && time.Since(c.at) < 30*time.Minute {
@@ -887,6 +927,22 @@ func (a *App) view() view {
 			} else {
 				a.needCnt = ck
 			}
+		}
+	}
+	// the enemy picks, each with 5 counter-picks (from its own build's matchups) to show on hover, until you lock in
+	if a.state != "unsupported" && !a.pick.Locked && len(en) > 0 && len(en) <= 5 {
+		roles, sure := core.EnemyRoles(en, known, a.tier)
+		for i, e := range en {
+			ev := enemyView{ID: e.Alias, Name: e.Name, Role: roles[i], Sure: sure[i]}
+			if roles[i] != "" {
+				ck := e.Alias + ":" + roles[i]
+				if c, ok := a.cache[ck]; ok && time.Since(c.at) < 30*time.Minute {
+					ev.Counters, ev.Ready = core.Counters(c.b, 5), true
+				} else {
+					a.needCnts = append(a.needCnts, ck)
+				}
+			}
+			v.Enemies = append(v.Enemies, ev)
 		}
 	}
 	// the most banned champions, to help with bans: shown until you lock in your own champion
@@ -911,7 +967,9 @@ func (a *App) push() {
 	a.mu.Lock()
 	v := a.view()
 	if k := a.needCnt; k != "" {
-		a.needCnt = ""
+		a.needCnts = append(a.needCnts, k)
+	}
+	for _, k := range a.needCnts {
 		if a.cntNext == nil {
 			a.cntNext = map[string]time.Time{}
 		}
@@ -920,6 +978,22 @@ func (a *App) push() {
 			go a.fetchCounters(k)
 		}
 	}
+	a.needCnt, a.needCnts = "", nil
+	for _, alias := range a.needJg {
+		if a.jgCache == nil {
+			a.jgCache = map[string]*jgEntry{}
+		}
+		e := a.jgCache[alias]
+		if e == nil {
+			e = &jgEntry{}
+			a.jgCache[alias] = e
+		}
+		if time.Since(e.tryAt) > 3*time.Minute { // one try at a time; after a failure, wait before retrying
+			e.tryAt = time.Now()
+			go a.fetchJungle(alias)
+		}
+	}
+	a.needJg = nil
 	w := a.w
 	b, _ := json.Marshal(v)
 	s := string(b)

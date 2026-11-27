@@ -160,39 +160,68 @@ type Matchup struct {
 	Play  int      `json:"play,omitempty"`
 }
 
-// LaneMatchup guesses which enemy pick plays myRole and looks up this build's win rate against it.
-// known[i] is enemies[i]'s role when it's known (Clash positions), else "".
-func LaneMatchup(b *Build, myRole string, enemies []Champion, known []string, t *TierList) Matchup {
-	m := Matchup{State: "waiting", Role: myRole}
-	if myRole == "" || t == nil || len(enemies) == 0 {
-		return m
+// EnemyIn guesses which enemy pick plays role: the most likely way to share out the roles, from how often each
+// champion is played where (the site's tier list), keeping roles that are known (Clash positions). i is -1 when
+// nobody fits; sure says the guess is clear (known, or the champion is almost only played there).
+func EnemyIn(role string, enemies []Champion, known []string, t *TierList) (i int, sure bool) {
+	if role == "" || t == nil || len(enemies) == 0 {
+		return -1, false
 	}
 	if len(enemies) > 5 {
 		enemies = enemies[:5]
 	}
 	w := make([][5]float64, len(enemies))
 	for i, e := range enemies {
-		for r, role := range Roles {
-			w[i][r] = t.Share(e.Alias, role)
+		for r, ro := range Roles {
+			w[i][r] = t.Share(e.Alias, ro)
 		}
 	}
 	fixed := make([]string, len(enemies))
 	copy(fixed, known)
-	roles := AssignRoles(w, fixed)
+	for i, r := range AssignRoles(w, fixed) {
+		if r == role {
+			return i, fixed[i] != "" || t.Share(enemies[i].Alias, r) >= 0.6
+		}
+	}
+	return -1, false
+}
+
+// EnemyRoles guesses every enemy pick's role at once (see EnemyIn); sure[i] says the guess is clear.
+func EnemyRoles(enemies []Champion, known []string, t *TierList) (roles []string, sure []bool) {
+	if t == nil || len(enemies) == 0 || len(enemies) > 5 {
+		return make([]string, len(enemies)), make([]bool, len(enemies))
+	}
+	w := make([][5]float64, len(enemies))
+	for i, e := range enemies {
+		for r, ro := range Roles {
+			w[i][r] = t.Share(e.Alias, ro)
+		}
+	}
+	fixed := make([]string, len(enemies))
+	copy(fixed, known)
+	roles = AssignRoles(w, fixed)
+	sure = make([]bool, len(enemies))
 	for i, r := range roles {
-		if r != myRole {
-			continue
-		}
-		e := enemies[i]
-		m.Opp, m.OppID, m.State = e.Name, e.Alias, "nodata"
-		m.Sure = fixed[i] != "" || t.Share(e.Alias, r) >= 0.6
-		for _, v := range b.Vs {
-			if Norm(v.ID) == Norm(e.Alias) || Norm(v.Name) == Norm(e.Name) {
-				wr := v.WR
-				m.WR, m.Play, m.State = &wr, v.Play, "ok"
-			}
-		}
+		sure[i] = r != "" && (fixed[i] != "" || t.Share(enemies[i].Alias, r) >= 0.6)
+	}
+	return roles, sure
+}
+
+// LaneMatchup guesses which enemy pick plays myRole and looks up this build's win rate against it.
+// known[i] is enemies[i]'s role when it's known (Clash positions), else "".
+func LaneMatchup(b *Build, myRole string, enemies []Champion, known []string, t *TierList) Matchup {
+	m := Matchup{State: "waiting", Role: myRole}
+	i, sure := EnemyIn(myRole, enemies, known, t)
+	if i < 0 {
 		return m
+	}
+	e := enemies[i]
+	m.Opp, m.OppID, m.State, m.Sure = e.Name, e.Alias, "nodata", sure
+	for _, v := range b.Vs {
+		if Norm(v.ID) == Norm(e.Alias) || Norm(v.Name) == Norm(e.Name) {
+			wr := v.WR
+			m.WR, m.Play, m.State = &wr, v.Play, "ok"
+		}
 	}
 	return m
 }
