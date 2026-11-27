@@ -3,7 +3,7 @@ package core
 import "fmt"
 
 // Objective is a neutral objective's first spawn on Summoner's Rift: a fixed rule of the game, the same in
-// every match (Season 2026, patch 26.x: Atakhan removed, Baron back at 20:00).
+// every match (Season 2026, patch 26.x: Atakhan removed, Baron back at 20:00, Scuttle Crab at 2:55 since 26.1).
 type Objective struct {
 	Name string
 	At   int // game time in seconds
@@ -12,6 +12,7 @@ type Objective struct {
 // Objectives: only the fixed first spawns. Later spawns after a kill are left out on purpose: they'd come from what
 // happened in this match, which Riot's third-party rules don't allow an app to track for you.
 var Objectives = []Objective{
+	{"Scuttle Crab", 2*60 + 55}, // both river crabs
 	{"Dragon", 5 * 60},
 	{"Void Grubs", 8 * 60},
 	{"Rift Herald", 15 * 60},

@@ -11,7 +11,7 @@ func TestCountdown(t *testing.T) {
 		t    float64
 		want string
 	}{
-		{0, ""}, {239.9, ""}, {240, "Dragon 1:00"}, {258.3, "Dragon 0:42"}, {299.5, "Dragon 0:01"},
+		{0, ""}, {114.9, ""}, {115, "Scuttle Crab 1:00"}, {170, "Scuttle Crab 0:05"}, {175, "Scuttle Crab is up"}, {180, ""}, {239.9, ""}, {240, "Dragon 1:00"}, {258.3, "Dragon 0:42"}, {299.5, "Dragon 0:01"},
 		{300, "Dragon is up"}, {304.9, "Dragon is up"}, {305, ""},
 		{420, "Void Grubs 1:00"}, {870, "Rift Herald 0:30"}, {1199, "Baron 0:01"}, {1206, ""}, {2000, ""},
 	} {
