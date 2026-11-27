@@ -53,6 +53,16 @@ type markerWins struct {
 var marker = &markerWins{paint: map[uintptr]uintptr{}}
 
 func markerProc(h, msg, wp, lp uintptr) uintptr {
+	objective.mu.Lock()
+	obj := h == objective.win && h != 0
+	objective.mu.Unlock()
+	if obj && msg == wmPaint {
+		objectivePaint(h)
+		return 0
+	}
+	if obj && msg == wmEraseBkgnd {
+		return 1 // WM_PAINT fills it
+	}
 	switch msg {
 	case wmEraseBkgnd:
 		marker.mu.Lock()
@@ -108,6 +118,7 @@ func makeMarker() {
 		}
 		marker.win[i] = h
 	}
+	makeObjective(inst, cls)
 }
 
 // markerEx: never takes focus, never in the taskbar, and lets every click through except while lining up.

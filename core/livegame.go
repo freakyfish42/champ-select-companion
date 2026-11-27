@@ -14,8 +14,8 @@ import (
 // LiveURL is Riot's Live Client Data API: the running game serves it on the player's own PC.
 const LiveURL = "https://127.0.0.1:2999"
 
-// Live reads the running game. The app asks it for one thing only: your own champion (level and skill points),
-// which you can see on your own screen anyway. Nothing about other players, and it only reads.
+// Live reads the running game. The app asks it for two things only: your own champion (level and skill points)
+// and the game clock, both on your own screen anyway. Nothing about other players, and it only reads.
 type Live struct {
 	base string
 	http *http.Client
@@ -70,6 +70,28 @@ func (l *Live) Player() (Player, error) {
 		}
 	}
 	return out, nil
+}
+
+// GameTime is the game clock in seconds (what the in-game timer shows), for the objective countdown.
+func (l *Live) GameTime() (float64, error) {
+	resp, err := l.http.Get(l.base + "/liveclientdata/gamestats")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return 0, &HTTPError{Status: resp.StatusCode}
+	}
+	var g struct {
+		GameTime float64 `json:"gameTime"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&g); err != nil {
+		return 0, err
+	}
+	if g.GameTime < 0 || g.GameTime > 4*3600 {
+		return 0, errNotLoaded
+	}
+	return g.GameTime, nil
 }
 
 // Level is your champion's level (1 to 18).

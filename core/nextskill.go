@@ -13,7 +13,7 @@ func NextSkill(order []string, p Player, alias string) (idx int, spend bool) {
 	if p.Level < 1 {
 		return -1, false
 	}
-	udyr := strings.EqualFold(alias, "Udyr")                          // four basic abilities: R from level 1, no 6/11/16
+	udyr := strings.EqualFold(alias, "Udyr")                           // four basic abilities: R from level 1, no 6/11/16
 	freeR := FreeR(alias) || (!udyr && p.Skills[3] > 0 && p.Level < 6) // R at level 1-5 can only have come for free
 	spent := p.Skills[0] + p.Skills[1] + p.Skills[2]
 	if !freeR {

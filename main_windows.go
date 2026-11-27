@@ -68,6 +68,8 @@ type Config struct {
 	// League's HUD Scale)
 	SkillSpot *core.SkillSpot `json:"skillSpot,omitempty"`
 	MarkerOff bool            `json:"markerOff,omitempty"` // the tray's "Skill marker on the ability bar" is off
+	// the tray's "Objective countdown" is off
+	ObjectivesOff bool `json:"objectivesOff,omitempty"`
 }
 
 // cardAlpha: the card's opacity setting (default 60 %).
@@ -101,14 +103,15 @@ type App struct {
 	inSelect    bool
 	phase       string
 	mode        string
-	inGame      bool    // a game is loading or running
-	level       int     // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	skills      [4]int  // your points in Q W E R, from the same place
-	cardHidden  bool    // hidden with the hotkey, for this game
-	moving      bool    // the player is moving the card (it takes clicks while moving)
-	liningUp    bool    // the player is lining up the skill marker over the ability bar
-	onLiningEnd func()  // set by the tray: lining up ended by itself (the game ended)
-	hud         float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
+	inGame      bool       // a game is loading or running
+	level       int        // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills      [4]int     // your points in Q W E R, from the same place
+	cardHidden  bool       // hidden with the hotkey, for this game
+	moving      bool       // the player is moving the card (it takes clicks while moving)
+	liningUp    bool       // the player is lining up the skill marker over the ability bar
+	onLiningEnd func()     // set by the tray: lining up ended by itself (the game ended)
+	live        *core.Live // Riot's Live Client Data API (your own player and the game clock)
+	hud         float64    // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
 	hudOK       bool
 	cardH       int32         // the card's height as the page measured it (CSS px)
 	cardDPR     float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
@@ -280,6 +283,9 @@ func inGamePhase(p string) bool { return core.InGamePhase(p) }
 func (a *App) watch() {
 	var lcu *core.Client
 	live := core.NewLive()
+	a.mu.Lock()
+	a.live = live
+	a.mu.Unlock()
 	fails := 0
 	for {
 		if lcu == nil {
@@ -1038,6 +1044,7 @@ func (a *App) uiLoop() {
 	a.mu.Unlock()
 	go a.follow(h)
 	go a.markerLoop()
+	go a.objectiveLoop()
 	w.Run()
 	// Run only returns if the window was closed (Alt+F4): start a fresh copy rather than run without a panel.
 	log.Printf("panel window closed; restarting")

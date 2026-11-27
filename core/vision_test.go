@@ -418,8 +418,17 @@ func TestVisionNoBlankRunePage(t *testing.T) {
 // and only claims its hotkey while a game with a card runs.
 func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	live, _ := os.ReadFile("livegame.go")
-	if n := strings.Count(string(live), "/liveclientdata/"); n != 1 || !strings.Contains(string(live), `"/liveclientdata/activeplayer"`) {
-		t.Errorf("the app may only ask the game for your own player (found %d live-data paths)", n)
+	// your own player, and (owner's request 2026-11-27, for the objective countdown) the game clock; never the
+	// event feed (kills, objectives taken) or other players
+	if n := strings.Count(string(live), "/liveclientdata/"); n != 2 || !strings.Contains(string(live), `"/liveclientdata/activeplayer"`) || !strings.Contains(string(live), `"/liveclientdata/gamestats"`) {
+		t.Errorf("the app may only ask the game for your own player and the game clock (found %d live-data paths)", n)
+	}
+	// the countdown is the fixed first-spawn schedule only: nothing from the match decides it
+	obj, _ := os.ReadFile("objectives.go")
+	for _, bad := range []string{"eventdata", "DragonKill", "BaronKill", "HeraldKill", "Respawn"} {
+		if strings.Contains(string(obj), bad) {
+			t.Errorf("the objective countdown must only follow the fixed schedule (found %q)", bad)
+		}
 	}
 	if strings.Contains(string(live), "http.MethodPost") || strings.Contains(string(live), `"POST"`) {
 		t.Error("the in-game reader must only read")
@@ -442,7 +451,7 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	if !strings.Contains(s, "want := a.inGame && a.cardReady()") || strings.Count(s, "cardKeysDown()") != 1 {
 		t.Error("the card's keys must only be looked at while a game with a card runs")
 	}
-	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go", "../marker_windows.go"} {
+	for _, f := range []string{"../main_windows.go", "../win_windows.go", "../tray_windows.go", "../update_windows.go", "../marker_windows.go", "../objective_windows.go"} {
 		b, _ := os.ReadFile(f)
 		for _, input := range []string{"SendInput", "keybd_event", "mouse_event", "SetCursorPos", "SetWindowsHookEx", "RegisterRawInputDevices"} {
 			if strings.Contains(string(b), input) {
@@ -462,5 +471,13 @@ func TestVisionInGameCardIsReferenceOnly(t *testing.T) {
 	}
 	if !strings.Contains(ms, "card := a.inGame && a.cardReady() && !a.cardHidden") || !strings.Contains(ms, "core.NextSkill(") {
 		t.Error("the skill marker only shows the build's own skill order, only where the card shows")
+	}
+	// the objective countdown: the marker's click-through, never-focused window class; only where the card shows;
+	// only the game clock and the fixed schedule
+	ob, _ := os.ReadFile("../objective_windows.go")
+	os_ := string(ob)
+	if !strings.Contains(os_, "pCreateWindowExW.Call(markerEx(false)") || !strings.Contains(os_, "a.inGame && a.cardReady() && !a.cardHidden") ||
+		!strings.Contains(os_, "live.GameTime()") || !strings.Contains(os_, "core.Countdown(") {
+		t.Error("the objective countdown must be click-through, only where the card shows, from the game clock and the fixed schedule")
 	}
 }
