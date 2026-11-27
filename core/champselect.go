@@ -38,6 +38,7 @@ type Member struct {
 	Spell1     int    `json:"spell1Id"`
 	Spell2     int    `json:"spell2Id"`
 	Puuid      string `json:"puuid"` // shown for the other team in some queues (Clash), else ""
+	Team       int    `json:"team"`  // 1: blue side, 2: red side
 }
 
 type Action struct {
@@ -55,6 +56,7 @@ type Pick struct {
 	Role       string // top, jungle, mid, adc, support, or "" when the queue has no roles
 	Spell1     int
 	Spell2     int
+	Side       string // "blue" or "red" (your side of the map), "" when the client doesn't say
 }
 
 func (s Session) Mine() Pick {
@@ -65,7 +67,7 @@ func (s Session) Mine() Pick {
 			break
 		}
 	}
-	p := Pick{Role: RoleFromPosition(me.Position), Spell1: me.Spell1, Spell2: me.Spell2}
+	p := Pick{Role: RoleFromPosition(me.Position), Spell1: me.Spell1, Spell2: me.Spell2, Side: SideOf(me.Team)}
 	var hover int
 	for _, group := range s.Actions {
 		for _, a := range group {

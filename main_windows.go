@@ -103,15 +103,19 @@ type App struct {
 	inSelect    bool
 	phase       string
 	mode        string
-	inGame      bool       // a game is loading or running
-	level       int        // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
-	skills      [4]int     // your points in Q W E R, from the same place
-	cardHidden  bool       // hidden with the hotkey, for this game
-	moving      bool       // the player is moving the card (it takes clicks while moving)
-	liningUp    bool       // the player is lining up the skill marker over the ability bar
-	onLiningEnd func()     // set by the tray: lining up ended by itself (the game ended)
-	live        *core.Live // Riot's Live Client Data API (your own player and the game clock)
-	hud         float64    // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
+	inGame      bool         // a game is loading or running
+	level       int          // your champion's level in that game, from Riot's Live Client Data API (0 = not loaded yet)
+	skills      [4]int       // your points in Q W E R, from the same place
+	cardHidden  bool         // hidden with the hotkey, for this game
+	moving      bool         // the player is moving the card (it takes clicks while moving)
+	liningUp    bool         // the player is lining up the skill marker over the ability bar
+	onLiningEnd func()       // set by the tray: lining up ended by itself (the game ended)
+	live        *core.Live   // Riot's Live Client Data API (your own player and the game clock)
+	jungle      *core.Jungle // the champion\'s common first clears (junglers only), from the build site
+	jungleFor   string       // which champion a.jungle is for
+	clock       float64      // the game clock at clockAt (objective countdown), 0 before the first read
+	clockAt     time.Time
+	hud         float64 // League's HUD Scale (0-1) from game.cfg, read every few seconds in game
 	hudOK       bool
 	cardH       int32         // the card's height as the page measured it (CSS px)
 	cardDPR     float64       // the page's own pixel scale (window.devicePixelRatio): sizes and pointer use this
@@ -585,8 +589,49 @@ func (a *App) fetch(seq int, key string, ch core.Champion, role string) {
 			a.build, a.state, a.msg = b, "build", ""
 		}
 	}
+	jg := err == nil && seq == a.seq && (role == "jungle" || b.Position == "jungle") && a.jungleFor != ch.Alias
+	a.mu.Unlock()
+	if jg {
+		go a.fetchJungle(ch.Alias)
+	}
+	a.push()
+}
+
+// fetchJungle reads the champion's common first clears (Riot match data on the build site).
+func (a *App) fetchJungle(alias string) {
+	j, err := core.FetchJungle(a.web, core.SiteURL, alias)
+	if err != nil {
+		log.Printf("jungle paths %s: %v", alias, err)
+		return
+	}
+	a.mu.Lock()
+	a.jungle, a.jungleFor = j, alias
 	a.mu.Unlock()
 	a.push()
+}
+
+// jungleView: the routes for your side, when you're the jungler on this champion.
+func (a *App) jungleView() *jungleView {
+	if a.roleOf() != "jungle" || a.jungle == nil || a.jungleFor != a.champ.Alias {
+		return nil
+	}
+	s, side := a.jungle.For(a.pick.Side)
+	if s == nil || len(s.Paths) == 0 {
+		return nil
+	}
+	n := len(s.Paths)
+	if n > 2 {
+		n = 2
+	}
+	return &jungleView{Side: side, Mine: side == a.pick.Side || a.pick.Side == "", Games: s.Games, Patch: a.jungle.Patch, Paths: s.Paths[:n]}
+}
+
+type jungleView struct {
+	Side  string            `json:"side"`
+	Mine  bool              `json:"mine"` // false: your side has no data yet, this is the other side's
+	Games int               `json:"games"`
+	Patch string            `json:"patch"`
+	Paths []core.JunglePath `json:"paths"`
 }
 
 // loadTier keeps the site's tier list (role shares, for guessing enemy roles) for 3 hours.
@@ -763,8 +808,10 @@ type view struct {
 	MarkerHint bool            `json:"markerHint,omitempty"` // in game: the skill marker isn't lined up yet
 	Moving     bool            `json:"moving,omitempty"`     // in game: the card is being moved
 	Hotkey     string          `json:"hotkey,omitempty"`
-	Alpha      int             `json:"alpha,omitempty"` // in game: the card's opacity in percent
-	Size       int             `json:"size,omitempty"`  // in game: the card's size in percent
+	Alpha      int             `json:"alpha,omitempty"`  // in game: the card's opacity in percent
+	Size       int             `json:"size,omitempty"`   // in game: the card's size in percent
+	Jungle     *jungleView     `json:"jungle,omitempty"` // junglers: common first clears for your side
+	EarlyGame  bool            `json:"early,omitempty"`  // in game: before 5:00 (the card shows the first clear)
 }
 
 func (a *App) roleOf() string {
@@ -785,7 +832,8 @@ func (a *App) view() view {
 		_, lined := a.skillSpot()
 		next, spend := core.NextSkill(a.build.Skills.Order, core.Player{Level: a.level, Skills: a.skills}, a.champ.Alias)
 		return view{State: "ingame", Version: version, Key: a.key, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(),
-			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, LineUp: a.liningUp, MarkerHint: !lined && !a.cfg.MarkerOff, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize()}
+			Build: a.build.Raw, Level: a.level, Next: next, Spend: spend, LineUp: a.liningUp, MarkerHint: !lined && !a.cfg.MarkerOff, Moving: a.moving, Hotkey: cardHotkey, Alpha: a.cfg.cardAlpha(), Size: a.cfg.cardSize(),
+			Jungle: a.jungleView(), EarlyGame: a.clockAt.IsZero() || a.clock+time.Since(a.clockAt).Seconds() < 300}
 	}
 	v := view{Key: a.key, Version: version, Test: a.cfg.TestMode, TooLate: a.timer.TooLate(a.timerAt, time.Now()), State: a.state, Msg: a.msg, Mode: a.mode, Queue: a.queue, Name: a.champ.Name, Alias: a.champ.Alias, Role: a.roleOf(), Locked: a.pick.Locked}
 	if a.state == "pick" || a.state == "waiting" || a.state == "unsupported" {
@@ -796,6 +844,7 @@ func (a *App) view() view {
 		v.Pref = a.prefs.Get(a.prefKey())
 		v.Runes, v.Spells = core.Order(a.build, v.Pref)
 		v.Applied = a.applied[a.prefKey()]
+		v.Jungle = a.jungleView()
 		var en []core.Champion
 		var known []string
 		for _, e := range a.enemies {

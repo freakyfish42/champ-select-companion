@@ -140,7 +140,14 @@ func (a *App) objectiveLoop() {
 		a.mu.Unlock()
 		if on && live != nil && time.Since(clockAt) > time.Second {
 			if t, err := live.GameTime(); err == nil {
+				first := clockAt.IsZero()
 				clock, clockAt = t, time.Now()
+				a.mu.Lock()
+				a.clock, a.clockAt = clock, clockAt
+				a.mu.Unlock()
+				if first || (t >= 300 && t < 302) {
+					go a.push() // the card drops the first clear at 5:00
+				}
 			}
 		}
 		g, fg := gameWindow(), foreground()
@@ -160,8 +167,11 @@ func (a *App) objectiveLoop() {
 			if isVisible(win) {
 				hideWindow(win)
 			}
-			if !on {
+			if !on && !clockAt.IsZero() {
 				clockAt = time.Time{} // a new game starts from a fresh clock
+				a.mu.Lock()
+				a.clock, a.clockAt = 0, time.Time{}
+				a.mu.Unlock()
 			}
 			time.Sleep(200 * time.Millisecond)
 			continue

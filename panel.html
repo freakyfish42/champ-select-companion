@@ -93,6 +93,12 @@ body.ig main{padding:6px 8px 6px;overflow:hidden;flex:none}
 .bn img{width:38px;height:38px;border-radius:6px;border:1px solid var(--line)}
 .bn small{font-size:11px;color:var(--mute);font-weight:600}
 .bn .tk img{filter:grayscale(1);opacity:.35}.bn .tk::after{content:"✕";position:absolute;top:6px;font-size:22px;color:#ff8f8f;font-weight:700}
+/* first clear (junglers): where junglers on this champion were at 1, 2, 3 and 4 minutes */
+.jg{margin:8px 0 2px;padding:6px 9px;border:1px dashed rgba(200,170,110,.45);border-radius:10px;font-size:12px}
+.jg h4{margin:0 0 4px;font:600 11.5px Inter,sans-serif;color:var(--gold)}.jg h4 small{color:var(--mute);font-weight:500}
+.jg .rt{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:2px 0}.jg .rt b{font-weight:600}.jg .rt i{color:var(--mute);font-style:normal}
+.jg .rt em{margin-left:auto;font-style:normal;color:var(--mute);font-size:11px}.jg .en{color:#ff9f9f}
+body.ig .jg{margin:5px 0 0;padding:4px 7px;font-size:11px}body.ig .jg .rt+.rt{display:none}
 .mv{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font-size:11px;color:var(--gold)}
 body.ig.moving{outline:2px dashed var(--gold);cursor:move}
 </style>
@@ -178,6 +184,12 @@ function counters(v){
   return `<div class="ci"><h4>Good into ${esc(v.countersFor)}</h4>${c.map(x=>`<div>${x.id&&ver?img(`${DD}${ver}/img/champion/${x.id}.png`,'',x.name):''}<span>${esc(x.name)}</span><b class="hi">${pct(x.wr)}</b><small>${num(x.play)} games</small></div>`).join('')}</div>`}
 
 /* the most banned champions (EUW Emerald+), until you lock in; ones already banned in this game are greyed out */
+function jungle(j,card){
+  if(!j||!j.paths||!j.paths.length)return '';
+  const side=j.side==='red'?'Red side':'Blue side';
+  const stop=x=>`<b class="${/^Enemy /.test(x)?'en':''}">${esc(x)}</b>`;
+  return `<div class="jg"><h4>First clear · ${side}${j.mine?'':' <small>(your side: no data yet)</small>'}${card?'':` <small>at 1-2-3-4 min · ${num(j.games)} games</small>`}</h4>`
+    +j.paths.map(p=>`<div class="rt">${p.path.map(stop).join('<i>→</i>')}<em>${pct(p.share)}</em></div>`).join('')+`</div>`}
 function bans(v){
   const b=v.bans||[];if(!b.length)return '';
   return `<h3>Most banned <small style="color:var(--mute);font-weight:400;text-transform:none;letter-spacing:0">· EUW Emerald+</small></h3><div class="bn">${b.map(x=>
@@ -230,6 +242,7 @@ function ingame(v){
   return `<div class="igh">${id&&ver?img(`${DD}${ver}/img/champion/${id}.png`):''}<span class="lv">${now}</span>${badge}<span class="mx" id="mx" data-def="${esc(mx)}">${mx}</span></div>`
     +(ord.length?`<div class="sq">${ord.slice(0,18).map((k,i)=>`<span data-name="Level ${i+1}: ${esc(k)}" class="${esc(String(k).toLowerCase())}${done(i)?' done':''}${i===nx?' nxt'+(go?' go':''):''}"${i===nx?` style="--k:${col}"`:''}>${esc(k)}</span>`).join('')}</div>`:'')
     +(groups.length?`<div class="its">${groups.join('<i></i>')}</div>`:'')
+    +(v.early?jungle(v.jungle,true):'')
     +(v.lineUp?`<div class="mv"><span>Drag the <b style="color:#9fc4ff">blue box</b> onto your Q icon and the <b style="color:#ff9f9f">red box</b> onto R, then click “Done lining up the skill marker” in the tray</span></div>`
       :v.markerHint&&go?`<div class="mv" style="color:var(--mute)"><span>Tray → “Line up the skill marker” to also highlight it on your ability bar</span></div>`:'')
     +(v.moving?`<div class="mv"><span>Drag it where you want it</span><button class="ap" id="mvdone">Done</button></div>`:'')}
@@ -261,7 +274,7 @@ function render(v){
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
   const ro=v.runeOrder||[],so=v.spellOrder||[];
   const ag=age(b);$('ver').textContent=(b.region&&b.region!=='EUW'?'All regions (op.gg EUW is down)':'EUW · Emerald+')+(ag?' · '+ag:'');$('ver').title='App '+(v.version||'');
-  m.innerHTML=bans(v)+matchup(v.matchup)+counters(v)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
+  m.innerHTML=bans(v)+matchup(v.matchup)+counters(v)+jungle(v.jungle,false)+(ro.length?`<h3>Rune pages</h3>${ro.map(i=>runeCard(b,i,v)).join('')}`:'<div class="empty">op.gg has no rune pages for this champion in this role yet.</div>')
     +(so.length?`<h3>Summoner spells</h3>${so.map(i=>spellRow(b,i,v)).join('')}`:'')
     +skills(b)+clash(v.clash);
   bindClash();
