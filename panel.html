@@ -300,7 +300,7 @@ function render(v){
   if(v.state==='waiting'||v.state==='pick'){m.innerHTML=enemies(v)+bans(v)+`<div class="empty">Hover or lock in a champion to see its rune pages and spells.</div>`+clash(v.clash);bindClash();return}
   if(v.state==='unsupported'){m.innerHTML=`<div class="empty">No suggestions in this mode. The stats are for ranked Summoner's Rift, so they'd be wrong for ${v.mode==='ARAM'?'ARAM':v.mode==='CHERRY'?'Arena':'this mode'}.</div>`;return}
   if(v.state==='loading'){m.innerHTML=enemies(v)+bans(v)+`<div class="empty">Loading ${esc(v.name)}…</div>`+clash(v.clash);bindClash();return}
-  if(v.state==='error'){m.innerHTML=`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
+  if(v.state==='error'){m.innerHTML=enemies(v)+`<div class="empty">${esc(v.msg)}<br><br><button class="ap" id="retry">Try again</button></div>`;$('retry').onclick=()=>window.retry&&retry();return}
   const b=typeof v.build==='string'?JSON.parse(v.build):v.build;
   const ro=v.runeOrder||[],so=v.spellOrder||[];
   const ag=age(b);$('ver').textContent=(b.region&&b.region!=='EUW'?'All regions (op.gg EUW is down)':'EUW · Emerald+')+(ag?' · '+ag:'');$('ver').title='App '+(v.version||'');

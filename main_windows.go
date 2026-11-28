@@ -874,7 +874,7 @@ type view struct {
 	Size       int             `json:"size,omitempty"`        // in game: the card's size in percent
 	Jungle     *jungleView     `json:"jungle,omitempty"`      // junglers: common first clears for your side
 	EnemyJg    *jungleView     `json:"enemyJungle,omitempty"` // champ select only: the enemy jungler's usual first clear
-	Enemies    []enemyView     `json:"enemies,omitempty"`     // champ select, until you lock in: enemy picks with counters
+	Enemies    []enemyView     `json:"enemies,omitempty"`     // champ select: enemy picks with counters on hover
 	EarlyGame  bool            `json:"early,omitempty"`       // in game: before 5:00 (the card shows the first clear)
 }
 
@@ -929,8 +929,9 @@ func (a *App) view() view {
 			}
 		}
 	}
-	// the enemy picks, each with 5 counter-picks (from its own build's matchups) to show on hover, until you lock in
-	if a.state != "unsupported" && !a.pick.Locked && len(en) > 0 && len(en) <= 5 {
+	// the enemy picks, each with 5 counter-picks (from its own build's matchups) to show on hover; kept after you
+	// lock in, so you can help your teammates pick (owner's ask, 2026-11-28)
+	if a.state != "unsupported" && len(en) > 0 && len(en) <= 5 {
 		roles, sure := core.EnemyRoles(en, known, a.tier)
 		for i, e := range en {
 			ev := enemyView{ID: e.Alias, Name: e.Name, Role: roles[i], Sure: sure[i]}
